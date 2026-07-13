@@ -1,0 +1,120 @@
+% 调用上级目录公共模板
+\documentclass{../template/softeng}
+
+\begin{document}
+
+% 封面：文档名、项目名、版本、编写人、审核人、审批人、日期
+\doccover{详细设计说明书}
+{项目名称替换处}
+{V2026.07}
+
+% 目录
+\tableofcontents
+\newpage
+
+% 修订记录
+\begin{revrecord}
+V1.0 & 2026-07-12 & 编写人 & 审核人 & 初稿完成，搭建完整详细设计国标文档框架 \\
+\hline
+\end{revrecord}
+
+\section{引言}
+\subsection{编写目的}
+\subsection{项目背景}
+\subsection{定义}
+\subsection{参考资料}
+
+\section{任务概述}
+\subsection{需求概述}
+\subsection{运行环境}
+\subsection{条件与限制}
+
+\section{模块详细设计}
+\subsection{模块1设计}
+\subsubsection{模块概述}
+\subsubsection{模块输入输出接口}
+\subsubsection{模块处理逻辑流程}
+\subsubsection{模块内部数据结构}
+\subsubsection{模块算法设计}
+\subsubsection{模块异常处理逻辑}
+
+\subsection{模块2设计}
+\subsubsection{模块概述}
+\subsubsection{模块输入输出接口}
+\subsubsection{模块处理逻辑流程}
+\subsubsection{模块内部数据结构}
+\subsubsection{模块算法设计}
+\subsubsection{模块异常处理逻辑}
+
+\subsection{其他业务模块}
+
+\section{接口详细设计}
+\subsection{外部接口详细设计}
+\subsubsection{用户交互接口}
+\subsubsection{第三方软件接口}
+\subsubsection{硬件接口}
+
+\subsection{内部模块接口详细设计}
+\subsubsection{模块间请求参数定义}
+\subsubsection{返回数据结构定义}
+\subsubsection{调用时序说明}
+
+\section{数据结构详细设计}
+\subsection{全局数据结构说明}
+\subsection{数据库表详细设计}
+\subsubsection{数据表1字段定义、约束、索引}
+\subsubsection{数据表2字段定义、约束、索引}
+\subsection{缓存/临时数据结构设计}
+
+\section{算法详细设计}
+\subsection{核心算法1}
+\subsubsection{算法描述}
+\subsubsection{输入输出参数}
+\subsubsection{算法步骤流程图}
+\subsubsection{伪代码/代码实现}
+\subsubsection{边界条件处理}
+
+\subsection{核心算法2}
+
+\section{界面详细设计}
+\subsection{页面1布局与控件说明}
+\subsection{页面交互逻辑}
+\subsection{页面输入校验规则}
+
+\section{出错处理详细设计}
+\subsection{模块内部异常分类}
+\subsection{异常捕获流程}
+\subsection{异常返回信息定义}
+\subsection{异常恢复处理方案}
+
+\section{安全详细设计}
+\subsection{身份校验逻辑}
+\subsection{数据加密处理设计}
+\subsection{防攻击处理逻辑}
+
+\section{维护详细设计}
+\subsection{日志模块设计}
+\subsection{配置项设计}
+\subsection{数据备份逻辑}
+
+% 流程图/界面截图插入示例
+\begin{figure}[htbp]
+    \centering
+    % \includegraphics[width=0.7\textwidth]{module_flow.png}
+    \caption{模块业务处理流程图}
+\end{figure}
+
+% 伪代码/代码块示例
+\begin{lstlisting}[language=Python]
+# 模块核心处理伪代码
+def core_func(param):
+    # 参数校验
+    if check_param(param) is False:
+        return error_result()
+    # 业务逻辑处理
+    data = query_db(param)
+    res = calc_logic(data)
+    return res
+\end{lstlisting}
+
+\end{document}

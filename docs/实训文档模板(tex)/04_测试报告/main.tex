@@ -1,0 +1,101 @@
+% 调用上级目录公共模板
+\documentclass{../template/softeng}
+
+\begin{document}
+
+% 封面：文档名、项目名、版本、编写人、审核人、审批人、日期
+\doccover{软件测试报告}
+{待填写项目名称}
+{V2026.07}
+
+% 目录
+\tableofcontents
+\newpage
+
+% 修订记录
+\begin{revrecord}
+V1.0 & 2026-07-12 & 测试编写人 & 测试负责人 & 初稿完成，搭建国标标准软件测试报告完整文档框架 \\
+\hline
+\end{revrecord}
+
+\section{引言}
+\subsection{编写目的}
+\subsection{项目背景}
+\subsection{术语与定义}
+\subsection{参考资料}
+
+\section{测试概要}
+\subsection{测试项目概述}
+\subsection{测试范围}
+\subsection{测试环境}
+\subsubsection{硬件环境}
+\subsubsection{软件环境}
+\subsubsection{网络环境}
+\subsection{测试人员与周期}
+\subsection{测试依据}
+
+\section{测试内容与执行情况}
+\subsection{功能测试}
+\subsubsection{测试模块划分}
+\subsubsection{测试用例执行统计}
+\subsubsection{典型测试场景说明}
+\subsection{性能测试}
+\subsubsection{测试指标标准}
+\subsubsection{压力/并发测试执行情况}
+\subsection{兼容性测试}
+\subsubsection{浏览器兼容测试}
+\subsubsection{系统环境兼容测试}
+\subsection{安全测试}
+\subsubsection{权限校验测试}
+\subsubsection{防注入、防XSS测试}
+\subsection{界面易用性测试}
+
+\section{测试用例执行结果统计}
+\subsection{整体用例统计汇总}
+\subsection{各模块用例通过率统计}
+\subsection{缺陷分级统计（严重/一般/轻微/建议）}
+
+\section{缺陷分析与问题汇总}
+\subsection{缺陷分类统计}
+\subsubsection{功能类缺陷}
+\subsubsection{性能类缺陷}
+\subsubsection{界面交互类缺陷}
+\subsubsection{安全类缺陷}
+\subsection{典型严重缺陷详情}
+\subsection{未修复遗留缺陷说明}
+\subsection{缺陷产生原因分析}
+
+\section{测试结论}
+\subsection{功能完整性结论}
+\subsection{性能达标情况结论}
+\subsection{系统安全与兼容性结论}
+\subsection{上线/交付判定意见}
+
+\section{建议与改进措施}
+\subsection{程序代码优化建议}
+\subsection{业务逻辑优化建议}
+\subsection{后续迭代测试优化建议}
+
+\section{附件}
+\subsection{附件1：全部测试用例清单}
+\subsection{附件2：缺陷完整记录表}
+\subsection{附件3：性能测试监控截图与日志}
+\subsection{附件4：测试执行原始日志}
+
+% 插入测试截图/统计图表示例
+\begin{figure}[htbp]
+    \centering
+    % \includegraphics[width=0.7\textwidth]{test_stat.png}
+    \caption{测试缺陷分级统计饼图}
+\end{figure}
+
+% 示例代码/测试脚本块
+\begin{lstlisting}[language=Python]
+# 自动化测试脚本示例
+def test_login(username, password):
+    resp = request.post("/api/login", json={"username":username,"pwd":password})
+    assert resp.status_code == 200
+    return resp.json()
+\end{lstlisting}
+
+\end{document}
