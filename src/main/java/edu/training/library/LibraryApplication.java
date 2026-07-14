@@ -5,9 +5,8 @@ import edu.training.library.db.Database;
 import edu.training.library.db.LibraryRepository;
 import edu.training.library.service.LibraryService;
 import edu.training.library.ui.LoginFrame;
-
-import javax.swing.*;
 import java.awt.*;
+import javax.swing.*;
 
 public final class LibraryApplication {
     private LibraryApplication() {}
@@ -21,16 +20,19 @@ public final class LibraryApplication {
         UIManager.put("Table.rowHeight", 34);
         UIManager.put("ScrollBar.width", 12);
         UIManager.put("defaultFont", new Font("Microsoft YaHei UI", Font.PLAIN, 14));
-        SwingUtilities.invokeLater(() -> {
-            try {
-                Database database = Database.fromEnvironment();
-                database.initialize();
-                LibraryService service = new LibraryService(new LibraryRepository(database));
-                service.seedDemoData();
-                new LoginFrame(service).setVisible(true);
-            } catch (Exception e) {
-                JOptionPane.showMessageDialog(null, e.getMessage(), "启动失败", JOptionPane.ERROR_MESSAGE);
-            }
-        });
+        SwingUtilities.invokeLater(
+                () -> {
+                    try {
+                        Database database = Database.fromEnvironment();
+                        database.initialize();
+                        LibraryService service =
+                                new LibraryService(new LibraryRepository(database));
+                        service.seedDemoData();
+                        new LoginFrame(service).setVisible(true);
+                    } catch (Exception e) {
+                        JOptionPane.showMessageDialog(
+                                null, e.getMessage(), "启动失败", JOptionPane.ERROR_MESSAGE);
+                    }
+                });
     }
 }
