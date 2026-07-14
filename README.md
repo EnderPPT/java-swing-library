@@ -20,13 +20,7 @@ java -jar target/library-system.jar
 
 ## 使用 MySQL
 
-先启动 MySQL 8.4：
-
-```powershell
-docker compose up -d
-```
-
-再配置当前终端并启动应用：
+先配置当前终端并启动应用：
 
 ```powershell
 $env:LIBRARY_DB_URL='jdbc:mysql://localhost:3306/library?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false'
@@ -37,14 +31,11 @@ java -jar target/library-system.jar
 
 程序会通过 `src/main/resources/db/schema.sql` 自动创建表结构。密码使用 PBKDF2-HMAC-SHA256 加盐后存储。
 
-## 测试与文档
+## 测试
 
 ```powershell
 mvn test
-mvn -q exec:java "-Dexec.mainClass=edu.training.library.docs.DocumentGenerator"
 ```
-
-四份 Word 交付文档位于 `deliverables/`，图表源文件位于 `docs/generated/`。
 
 ## 业务规则
 
