@@ -44,7 +44,7 @@ mvn test
 mvn -q exec:java "-Dexec.mainClass=edu.training.library.docs.DocumentGenerator"
 ```
 
-四份 Word 交付文档生成在 `deliverables/`，图表源文件生成在 `docs/generated/`。
+四份 Word 交付文档位于 `deliverables/`，图表源文件位于 `docs/generated/`。
 
 ## 业务规则
 
