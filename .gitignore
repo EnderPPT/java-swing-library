@@ -1,5 +1,4 @@
 target/
-data/
 .idea/
 *.iml
 *.log

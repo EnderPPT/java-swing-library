@@ -14,6 +14,9 @@ public final class Database {
 
     public Database(String url, String user, String password) {
         this.url = Objects.requireNonNull(url);
+        if (!url.startsWith("jdbc:mysql:")) {
+            throw new IllegalArgumentException("仅支持 MySQL JDBC 连接");
+        }
         this.user = Objects.requireNonNull(user);
         this.password = Objects.requireNonNull(password);
     }

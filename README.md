@@ -11,19 +11,19 @@ mvn clean package
 java -jar target/library-system.jar
 ```
 
-默认使用本地 H2 文件数据库，首次启动自动建表并写入演示数据。数据保存在 `data/` 目录。
+首次启动前需要准备 MySQL ，账号须具有创建 `library` 数据库及表结构的权限。
 
 | 角色 | 用户名 | 密码 |
 |---|---|---|
 | 管理员 | `admin` | `admin123` |
 | 读者 | `reader` | `reader123` |
 
-## 使用 MySQL
+## 配置 MySQL 连接
 
 先配置当前终端并启动应用：
 
 ```powershell
-$env:LIBRARY_DB_URL='jdbc:mysql://localhost:3306/library?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false'
+$env:LIBRARY_DB_URL='jdbc:mysql://localhost:3306/library?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false&createDatabaseIfNotExist=true'
 $env:LIBRARY_DB_USER='library'
 $env:LIBRARY_DB_PASSWORD='library_pass'
 java -jar target/library-system.jar
@@ -34,8 +34,13 @@ java -jar target/library-system.jar
 ## 测试
 
 ```powershell
+$env:LIBRARY_TEST_DB_URL='jdbc:mysql://localhost:3306/library_test?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false&createDatabaseIfNotExist=true'
+$env:LIBRARY_TEST_DB_USER='library'
+$env:LIBRARY_TEST_DB_PASSWORD='library_pass'
 mvn test
 ```
+
+测试只允许连接名称包含 `library_test` 的 MySQL 专用测试库，并会在每个用例前清空其中的业务表。未设置 `LIBRARY_TEST_DB_URL` 时，MySQL 集成测试会跳过。
 
 ## 业务规则
 
