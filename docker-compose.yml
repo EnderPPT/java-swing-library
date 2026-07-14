@@ -1,0 +1,21 @@
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: library-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: library_root
+      MYSQL_DATABASE: library
+      MYSQL_USER: library
+      MYSQL_PASSWORD: library_pass
+    ports:
+      - "3306:3306"
+    volumes:
+      - library_mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-ulibrary", "-plibrary_pass"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  library_mysql_data:
