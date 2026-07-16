@@ -6,6 +6,8 @@ import edu.training.library.db.LibraryRepository;
 import edu.training.library.service.LibraryService;
 import edu.training.library.ui.LoginFrame;
 import java.awt.*;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import javax.swing.*;
 
 public final class LibraryApplication {
@@ -28,11 +30,34 @@ public final class LibraryApplication {
                         LibraryService service =
                                 new LibraryService(new LibraryRepository(database));
                         service.seedDemoData();
+                        service.reconcileReservationInventory();
+                        startReservationExpiryTask(service);
                         new LoginFrame(service).setVisible(true);
                     } catch (Exception e) {
                         JOptionPane.showMessageDialog(
                                 null, e.getMessage(), "启动失败", JOptionPane.ERROR_MESSAGE);
                     }
                 });
+    }
+
+    private static void startReservationExpiryTask(LibraryService service) {
+        var executor =
+                Executors.newSingleThreadScheduledExecutor(
+                        task -> {
+                            Thread thread = new Thread(task, "reservation-expiry");
+                            thread.setDaemon(true);
+                            return thread;
+                        });
+        executor.scheduleWithFixedDelay(
+                () -> {
+                    try {
+                        service.expireReservations();
+                    } catch (RuntimeException e) {
+                        System.err.println("预约过期处理失败：" + e.getMessage());
+                    }
+                },
+                1,
+                1,
+                TimeUnit.MINUTES);
     }
 }

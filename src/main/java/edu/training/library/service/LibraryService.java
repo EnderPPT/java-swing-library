@@ -8,7 +8,10 @@ import java.math.RoundingMode;
 import java.sql.*;
 import java.time.*;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 public final class LibraryService {
     public static final int MAX_ACTIVE_LOANS = 5;
@@ -104,6 +107,7 @@ public final class LibraryService {
     public void updateBook(Book book, String category) {
         if (book.totalCopies() < 1) throw new IllegalArgumentException("馆藏数量至少为1");
         repository.updateBook(book, required(category, "分类"));
+        reconcileReservationInventory();
     }
 
     public long borrow(long readerId, long bookId) {
@@ -112,7 +116,7 @@ public final class LibraryService {
                 .transaction(
                         c -> {
                             ensureReader(c, readerId);
-                            expireReady(c);
+                            expireReadyReservations(c);
                             if (count(
                                             c,
                                             "SELECT COUNT(*) FROM loans WHERE user_id=? AND status='BORROWED'",
@@ -135,7 +139,8 @@ public final class LibraryService {
                                             c,
                                             "SELECT available_copies FROM books WHERE id=? FOR UPDATE",
                                             bookId);
-                            if (available <= 0)
+                            Long readyReservationId = readyReservationId(c, readerId, bookId);
+                            if (readyReservationId == null && available <= 0)
                                 throw new IllegalArgumentException("该书当前无可借库存，请先预约");
                             LocalDateTime now = LocalDateTime.now(clock),
                                     due = now.plusDays(LOAN_DAYS);
@@ -147,15 +152,17 @@ public final class LibraryService {
                                             bookId,
                                             now,
                                             due);
-                            update(
-                                    c,
-                                    "UPDATE books SET available_copies=available_copies-1 WHERE id=?",
-                                    bookId);
-                            update(
-                                    c,
-                                    "UPDATE reservations SET status='FULFILLED' WHERE user_id=? AND book_id=? AND status='READY'",
-                                    readerId,
-                                    bookId);
+                            if (readyReservationId == null) {
+                                update(
+                                        c,
+                                        "UPDATE books SET available_copies=available_copies-1 WHERE id=?",
+                                        bookId);
+                            } else {
+                                update(
+                                        c,
+                                        "UPDATE reservations SET status='FULFILLED' WHERE id=?",
+                                        readyReservationId);
+                            }
                             return id;
                         });
     }
@@ -196,19 +203,7 @@ public final class LibraryService {
                                         amount,
                                         "逾期" + overdue + "天");
                             }
-                            try (PreparedStatement p =
-                                    c.prepareStatement(
-                                            "SELECT id FROM reservations WHERE book_id=? AND status='WAITING' ORDER BY reserved_at LIMIT 1 FOR UPDATE")) {
-                                p.setLong(1, loan.bookId);
-                                try (ResultSet r = p.executeQuery()) {
-                                    if (r.next())
-                                        update(
-                                                c,
-                                                "UPDATE reservations SET status='READY',expires_at=?,notified=TRUE WHERE id=?",
-                                                now.plusDays(3),
-                                                r.getLong(1));
-                                }
-                            }
+                            promoteWaitingReservations(c, loan.bookId, now);
                             return null;
                         });
     }
@@ -246,7 +241,7 @@ public final class LibraryService {
                 .transaction(
                         c -> {
                             ensureReader(c, readerId);
-                            expireReady(c);
+                            expireReadyReservations(c);
                             if (count(
                                             c,
                                             "SELECT COUNT(*) FROM loans WHERE user_id=? AND book_id=? AND status='BORROWED'",
@@ -259,27 +254,33 @@ public final class LibraryService {
                                             readerId,
                                             bookId)
                                     > 0) throw new IllegalArgumentException("请勿重复预约");
-                            String status =
+                            int available =
                                     integer(
-                                                            c,
-                                                            "SELECT available_copies FROM books WHERE id=?",
-                                                            bookId)
-                                                    > 0
-                                            ? "READY"
-                                            : "WAITING";
+                                            c,
+                                            "SELECT available_copies FROM books WHERE id=? FOR UPDATE",
+                                            bookId);
+                            String status = available > 0 ? "READY" : "WAITING";
                             LocalDateTime expires =
                                     "READY".equals(status)
                                             ? LocalDateTime.now(clock).plusDays(3)
                                             : null;
-                            return insert(
-                                    c,
-                                    "INSERT INTO reservations(user_id,book_id,reserved_at,expires_at,status,notified) VALUES(?,?,?,?,?,?)",
-                                    readerId,
-                                    bookId,
-                                    LocalDateTime.now(clock),
-                                    expires,
-                                    status,
-                                    "READY".equals(status));
+                            long reservationId =
+                                    insert(
+                                            c,
+                                            "INSERT INTO reservations(user_id,book_id,reserved_at,expires_at,status,notified) VALUES(?,?,?,?,?,?)",
+                                            readerId,
+                                            bookId,
+                                            LocalDateTime.now(clock),
+                                            expires,
+                                            status,
+                                            "READY".equals(status));
+                            if ("READY".equals(status)) {
+                                update(
+                                        c,
+                                        "UPDATE books SET available_copies=available_copies-1 WHERE id=?",
+                                        bookId);
+                            }
+                            return reservationId;
                         });
     }
 
@@ -288,13 +289,68 @@ public final class LibraryService {
                 .database()
                 .transaction(
                         c -> {
-                            try (PreparedStatement p =
-                                    c.prepareStatement(
-                                            "UPDATE reservations SET status='CANCELLED' WHERE id=? AND user_id=? AND status IN ('WAITING','READY')")) {
-                                p.setLong(1, reservationId);
-                                p.setLong(2, readerId);
-                                if (p.executeUpdate() == 0)
-                                    throw new IllegalArgumentException("该预约不能取消");
+                            ReservationState reservation =
+                                    reservationState(c, reservationId, readerId, false);
+                            lockBook(c, reservation.bookId());
+                            reservation = reservationState(c, reservationId, readerId, true);
+                            if (!"WAITING".equals(reservation.status())
+                                    && !"READY".equals(reservation.status())) {
+                                throw new IllegalArgumentException("该预约不能取消");
+                            }
+                            update(
+                                    c,
+                                    "UPDATE reservations SET status='CANCELLED' WHERE id=?",
+                                    reservationId);
+                            if ("READY".equals(reservation.status())) {
+                                update(
+                                        c,
+                                        "UPDATE books SET available_copies=available_copies+1 WHERE id=?",
+                                        reservation.bookId());
+                                promoteWaitingReservations(
+                                        c, reservation.bookId(), LocalDateTime.now(clock));
+                            }
+                            return null;
+                        });
+    }
+
+    public void expireReservations() {
+        repository
+                .database()
+                .transaction(
+                        c -> {
+                            expireReadyReservations(c);
+                            return null;
+                        });
+    }
+
+    public void reconcileReservationInventory() {
+        repository
+                .database()
+                .transaction(
+                        c -> {
+                            LocalDateTime now = LocalDateTime.now(clock);
+                            for (long bookId : bookIds(c)) {
+                                int totalCopies = totalCopiesForUpdate(c, bookId);
+                                int activeLoans =
+                                        integer(
+                                                c,
+                                                "SELECT COUNT(*) FROM loans WHERE book_id=? AND status='BORROWED'",
+                                                bookId);
+                                int reservableCopies = Math.max(0, totalCopies - activeLoans);
+                                List<Long> readyIds = readyReservationIdsForUpdate(c, bookId);
+                                int heldCopies = Math.min(reservableCopies, readyIds.size());
+                                for (int i = heldCopies; i < readyIds.size(); i++) {
+                                    update(
+                                            c,
+                                            "UPDATE reservations SET status='WAITING',expires_at=NULL,notified=FALSE WHERE id=?",
+                                            readyIds.get(i));
+                                }
+                                update(
+                                        c,
+                                        "UPDATE books SET available_copies=? WHERE id=?",
+                                        reservableCopies - heldCopies,
+                                        bookId);
+                                promoteWaitingReservations(c, bookId, now);
                             }
                             return null;
                         });
@@ -331,6 +387,7 @@ public final class LibraryService {
     }
 
     public List<Reservation> reservations(Long userId) {
+        expireReservations();
         return repository.reservations(userId);
     }
 
@@ -374,11 +431,120 @@ public final class LibraryService {
         }
     }
 
-    private void expireReady(Connection c) throws SQLException {
-        update(
-                c,
-                "UPDATE reservations SET status='EXPIRED' WHERE status='READY' AND expires_at<?",
-                LocalDateTime.now(clock));
+    private void expireReadyReservations(Connection c) throws SQLException {
+        LocalDateTime now = LocalDateTime.now(clock);
+        Set<Long> bookIds = new LinkedHashSet<>();
+        try (PreparedStatement statement =
+                c.prepareStatement(
+                        "SELECT DISTINCT book_id FROM reservations WHERE status='READY' AND expires_at<?")) {
+            statement.setTimestamp(1, Timestamp.valueOf(now));
+            try (ResultSet result = statement.executeQuery()) {
+                while (result.next()) bookIds.add(result.getLong(1));
+            }
+        }
+        for (long bookId : bookIds) {
+            lockBook(c, bookId);
+            int expired =
+                    updateCount(
+                            c,
+                            "UPDATE reservations SET status='EXPIRED' WHERE book_id=? AND status='READY' AND expires_at<?",
+                            bookId,
+                            now);
+            if (expired == 0) continue;
+            update(
+                    c,
+                    "UPDATE books SET available_copies=available_copies+? WHERE id=?",
+                    expired,
+                    bookId);
+            promoteWaitingReservations(c, bookId, now);
+        }
+    }
+
+    private void promoteWaitingReservations(Connection c, long bookId, LocalDateTime now)
+            throws SQLException {
+        int available = lockBook(c, bookId);
+        while (available > 0) {
+            Long reservationId = firstWaitingReservationId(c, bookId);
+            if (reservationId == null) return;
+            update(
+                    c,
+                    "UPDATE reservations SET status='READY',expires_at=?,notified=TRUE WHERE id=?",
+                    now.plusDays(3),
+                    reservationId);
+            update(c, "UPDATE books SET available_copies=available_copies-1 WHERE id=?", bookId);
+            available--;
+        }
+    }
+
+    private static Long readyReservationId(Connection c, long readerId, long bookId)
+            throws SQLException {
+        try (PreparedStatement statement =
+                c.prepareStatement(
+                        "SELECT id FROM reservations WHERE user_id=? AND book_id=? AND status='READY' FOR UPDATE")) {
+            statement.setLong(1, readerId);
+            statement.setLong(2, bookId);
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() ? result.getLong(1) : null;
+            }
+        }
+    }
+
+    private static Long firstWaitingReservationId(Connection c, long bookId) throws SQLException {
+        try (PreparedStatement statement =
+                c.prepareStatement(
+                        "SELECT id FROM reservations WHERE book_id=? AND status='WAITING' ORDER BY reserved_at,id LIMIT 1 FOR UPDATE")) {
+            statement.setLong(1, bookId);
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() ? result.getLong(1) : null;
+            }
+        }
+    }
+
+    private static int lockBook(Connection c, long bookId) throws SQLException {
+        return integer(c, "SELECT available_copies FROM books WHERE id=? FOR UPDATE", bookId);
+    }
+
+    private static int totalCopiesForUpdate(Connection c, long bookId) throws SQLException {
+        return integer(c, "SELECT total_copies FROM books WHERE id=? FOR UPDATE", bookId);
+    }
+
+    private static List<Long> bookIds(Connection c) throws SQLException {
+        List<Long> ids = new ArrayList<>();
+        try (PreparedStatement statement = c.prepareStatement("SELECT id FROM books ORDER BY id");
+                ResultSet result = statement.executeQuery()) {
+            while (result.next()) ids.add(result.getLong(1));
+        }
+        return ids;
+    }
+
+    private static List<Long> readyReservationIdsForUpdate(Connection c, long bookId)
+            throws SQLException {
+        List<Long> ids = new ArrayList<>();
+        try (PreparedStatement statement =
+                c.prepareStatement(
+                        "SELECT id FROM reservations WHERE book_id=? AND status='READY' ORDER BY reserved_at,id FOR UPDATE")) {
+            statement.setLong(1, bookId);
+            try (ResultSet result = statement.executeQuery()) {
+                while (result.next()) ids.add(result.getLong(1));
+            }
+        }
+        return ids;
+    }
+
+    private static ReservationState reservationState(
+            Connection c, long reservationId, long readerId, boolean forUpdate)
+            throws SQLException {
+        String sql =
+                "SELECT book_id,status FROM reservations WHERE id=? AND user_id=?"
+                        + (forUpdate ? " FOR UPDATE" : "");
+        try (PreparedStatement statement = c.prepareStatement(sql)) {
+            statement.setLong(1, reservationId);
+            statement.setLong(2, readerId);
+            try (ResultSet result = statement.executeQuery()) {
+                if (!result.next()) throw new IllegalArgumentException("该预约不能取消");
+                return new ReservationState(result.getLong(1), result.getString(2));
+            }
+        }
     }
 
     private LoanRow loanForUpdate(Connection c, long id) throws SQLException {
@@ -430,6 +596,13 @@ public final class LibraryService {
         }
     }
 
+    private static int updateCount(Connection c, String sql, Object... args) throws SQLException {
+        try (PreparedStatement p = c.prepareStatement(sql)) {
+            bind(p, args);
+            return p.executeUpdate();
+        }
+    }
+
     private static void bind(PreparedStatement p, Object... args) throws SQLException {
         for (int i = 0; i < args.length; i++) {
             Object v = args[i];
@@ -449,4 +622,6 @@ public final class LibraryService {
 
     private record LoanRow(
             long userId, long bookId, LocalDateTime dueAt, int renewCount, String status) {}
+
+    private record ReservationState(long bookId, String status) {}
 }
