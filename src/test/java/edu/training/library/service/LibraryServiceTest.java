@@ -23,7 +23,7 @@ class LibraryServiceTest {
 
     private static void connectToMySql() {
         if (database != null) return;
-        String url = System.getenv("LIBRARY_TEST_DB_URL");
+        String url = setting("LIBRARY_TEST_DB_URL");
         assumeTrue(url != null && !url.isBlank(), "未设置 LIBRARY_TEST_DB_URL，跳过 MySQL 集成测试");
         assumeTrue(url.startsWith("jdbc:mysql:"), "测试数据库必须是 MySQL");
         int nameStart = url.lastIndexOf('/') + 1;
@@ -31,8 +31,8 @@ class LibraryServiceTest {
         String databaseName =
                 url.substring(nameStart, nameEnd < 0 ? url.length() : nameEnd).toLowerCase();
         assumeTrue(databaseName.contains("library_test"), "测试库名称必须包含 library_test");
-        String user = System.getenv().getOrDefault("LIBRARY_TEST_DB_USER", "library");
-        String password = System.getenv().getOrDefault("LIBRARY_TEST_DB_PASSWORD", "");
+        String user = setting("LIBRARY_TEST_DB_USER", "library");
+        String password = setting("LIBRARY_TEST_DB_PASSWORD", "");
         Database candidate = new Database(url, user, password);
         try {
             candidate.initialize();
@@ -40,6 +40,14 @@ class LibraryServiceTest {
         } catch (RuntimeException e) {
             fail("无法连接 MySQL 测试库：" + e.getMessage());
         }
+    }
+
+    private static String setting(String name) {
+        return setting(name, null);
+    }
+
+    private static String setting(String name, String defaultValue) {
+        return System.getProperty(name, System.getenv().getOrDefault(name, defaultValue));
     }
 
     @BeforeEach
@@ -128,6 +136,73 @@ class LibraryServiceTest {
         assertEquals("READY", ready.status());
         assertTrue(ready.notified());
         assertEquals(LocalDateTime.parse("2026-07-04T09:00:00"), ready.expiresAt());
+        assertEquals(0, service.books("书名", "测试图书").getFirst().availableCopies());
+    }
+
+    @Test
+    void readyReservationHoldsStockUntilReaderBorrows() {
+        service.reserve(reader.id(), singleCopyBook.id());
+
+        assertEquals(0, service.books("书名", "测试图书").getFirst().availableCopies());
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> service.borrow(reader2.id(), singleCopyBook.id()));
+
+        assertDoesNotThrow(() -> service.borrow(reader.id(), singleCopyBook.id()));
+        assertEquals("FULFILLED", service.reservations(reader.id()).getFirst().status());
+        assertEquals(0, service.books("书名", "测试图书").getFirst().availableCopies());
+    }
+
+    @Test
+    void cancellingReadyReservationPromotesNextReader() {
+        long firstReservation = service.reserve(reader.id(), singleCopyBook.id());
+        service.reserve(reader2.id(), singleCopyBook.id());
+
+        service.cancelReservation(firstReservation, reader.id());
+
+        assertEquals("CANCELLED", service.reservations(reader.id()).getFirst().status());
+        Reservation next = service.reservations(reader2.id()).getFirst();
+        assertEquals("READY", next.status());
+        assertTrue(next.notified());
+        assertEquals(0, service.books("书名", "测试图书").getFirst().availableCopies());
+    }
+
+    @Test
+    void expiredReservationPromotesNextReader() {
+        service.reserve(reader.id(), singleCopyBook.id());
+        service.reserve(reader2.id(), singleCopyBook.id());
+        LibraryService lateService = new LibraryService(repository, at("2026-07-05T09:00:00"));
+
+        lateService.expireReservations();
+
+        assertEquals("EXPIRED", lateService.reservations(reader.id()).getFirst().status());
+        Reservation next = lateService.reservations(reader2.id()).getFirst();
+        assertEquals("READY", next.status());
+        assertEquals(LocalDateTime.parse("2026-07-08T09:00:00"), next.expiresAt());
+        assertEquals(0, lateService.books("书名", "测试图书").getFirst().availableCopies());
+    }
+
+    @Test
+    void increasingBookCopiesPromotesWaitingReaders() {
+        service.reserve(reader.id(), singleCopyBook.id());
+        service.reserve(reader2.id(), singleCopyBook.id());
+
+        Book current = service.books("书名", "测试图书").getFirst();
+        service.updateBook(
+                new Book(
+                        current.id(),
+                        current.isbn(),
+                        current.title(),
+                        current.author(),
+                        current.publisher(),
+                        current.category(),
+                        2,
+                        current.availableCopies(),
+                        current.location()),
+                current.category());
+
+        assertEquals("READY", service.reservations(reader2.id()).getFirst().status());
+        assertEquals(0, service.books("书名", "测试图书").getFirst().availableCopies());
     }
 
     @Test
