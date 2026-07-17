@@ -5,16 +5,23 @@ import edu.training.library.service.LibraryService;
 import java.awt.*;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
+import javax.swing.border.MatteBorder;
 import javax.swing.table.DefaultTableModel;
 
 public final class LibraryFrame extends JFrame {
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
     private final LibraryService service;
     private User current;
-    private final JTabbedPane tabs = new JTabbedPane(JTabbedPane.LEFT);
+    private final CardLayout pageLayout = new CardLayout();
+    private final JPanel pages = new JPanel(pageLayout);
+    private final JLabel pageGlyph = new JLabel("01");
+    private final JLabel pageTitle = new JLabel("总览");
+    private final JLabel accountLabel = new JLabel();
     private final List<Runnable> refreshers = new ArrayList<>();
     private List<Book> bookRows = List.of();
     private JTable bookTable;
@@ -34,7 +41,11 @@ public final class LibraryFrame extends JFrame {
     private JTable userTable;
     private DefaultTableModel userModel;
     private JPanel dashboardMetrics;
+    private final RankingChart dashboardRanking = new RankingChart();
+    private DefaultTableModel recentLoanModel;
+    private JLabel dashboardMeta;
     private DefaultTableModel rankingModel;
+    private RankingChart statisticsChart;
 
     public LibraryFrame(LibraryService service, User user) {
         super("馆藏通 - " + user.fullName());
@@ -44,60 +55,193 @@ public final class LibraryFrame extends JFrame {
         setSize(1220, 760);
         setMinimumSize(new Dimension(980, 650));
         setLocationRelativeTo(null);
-        setLayout(new BorderLayout());
-        add(header(), BorderLayout.NORTH);
-        tabs.setBorder(new EmptyBorder(10, 10, 10, 10));
-        tabs.addTab("总览", dashboardPanel());
-        tabs.addTab("馆藏检索", booksPanel());
-        tabs.addTab(user.role() == Role.ADMIN ? "借还工作台" : "我的借阅", loansPanel());
-        tabs.addTab("预约管理", reservationsPanel());
-        tabs.addTab("罚款记录", finesPanel());
-        if (user.role() == Role.ADMIN) tabs.addTab("读者管理", usersPanel());
-        tabs.addTab("统计分析", statisticsPanel());
-        add(tabs, BorderLayout.CENTER);
+        JPanel root = new JPanel(new BorderLayout());
+        root.setBackground(Ui.BACKGROUND);
+        Map<String, JPanel> pagePanels = buildPages();
+        for (Map.Entry<String, JPanel> page : pagePanels.entrySet()) {
+            pages.add(page.getValue(), page.getKey());
+        }
+        JPanel workspace = new JPanel(new BorderLayout());
+        workspace.setOpaque(false);
+        workspace.add(header(), BorderLayout.NORTH);
+        workspace.add(pages, BorderLayout.CENTER);
+        root.add(sidebar(), BorderLayout.WEST);
+        root.add(workspace, BorderLayout.CENTER);
+        setContentPane(root);
         refreshAll();
     }
 
+    private Map<String, JPanel> buildPages() {
+        Map<String, JPanel> result = new LinkedHashMap<>();
+        result.put("dashboard", dashboardPanel());
+        result.put("books", booksPanel());
+        if (current.role() == Role.ADMIN) result.put("users", usersPanel());
+        result.put("loans", loansPanel());
+        result.put("reservations", reservationsPanel());
+        result.put("fines", finesPanel());
+        result.put("statistics", statisticsPanel());
+        return result;
+    }
+
     private JPanel header() {
-        JPanel p = new JPanel(new BorderLayout());
-        p.setBackground(Color.WHITE);
-        p.setBorder(new EmptyBorder(12, 20, 12, 20));
-        JLabel brand = new JLabel("馆藏通  |  图书馆借阅管理系统");
-        brand.setFont(brand.getFont().deriveFont(Font.BOLD, 18f));
-        brand.setForeground(Ui.INK);
-        p.add(brand, BorderLayout.WEST);
-        JPanel right =
-                Ui.toolbar(
-                        new JLabel(
-                                current.fullName()
-                                        + " · "
-                                        + (current.role() == Role.ADMIN ? "管理员" : "读者")));
-        JButton profile = new JButton("个人资料");
+        JPanel panel = new JPanel(new BorderLayout(18, 0));
+        panel.setBackground(new Color(255, 255, 255, 220));
+        panel.setBorder(
+                BorderFactory.createCompoundBorder(
+                        new MatteBorder(0, 0, 1, 0, Ui.OUTLINE_SOFT),
+                        new EmptyBorder(0, 24, 0, 18)));
+        panel.setPreferredSize(new Dimension(1, 72));
+
+        JPanel heading = Ui.toolbar(pageGlyph, pageTitle);
+        pageGlyph.setFont(Ui.bodyFont(Font.BOLD, 24f));
+        pageTitle.setFont(Ui.serifFont(Font.BOLD, 22f));
+        panel.add(heading, BorderLayout.WEST);
+
+        accountLabel.setText(accountText());
+        accountLabel.setFont(Ui.bodyFont(Font.PLAIN, 13f));
+        accountLabel.setForeground(Ui.MUTED);
+        JButton profile = Ui.secondary("个人资料");
         profile.addActionListener(e -> editProfile());
-        JButton logout = new JButton("退出");
-        logout.addActionListener(
-                e -> {
-                    dispose();
-                    new LoginFrame(service).setVisible(true);
-                });
-        right.add(profile);
-        right.add(logout);
-        p.add(right, BorderLayout.EAST);
-        return p;
+        JButton logout = Ui.danger("退出");
+        logout.addActionListener(e -> logout());
+        JPanel right = Ui.toolbar(accountLabel, profile, logout);
+        right.setAlignmentY(Component.CENTER_ALIGNMENT);
+        panel.add(right, BorderLayout.EAST);
+        return panel;
+    }
+
+    private JPanel sidebar() {
+        JPanel sidebar = new JPanel(new BorderLayout());
+        sidebar.setBackground(Ui.SIDEBAR);
+        sidebar.setPreferredSize(new Dimension(220, 1));
+        sidebar.setBorder(new MatteBorder(0, 0, 0, 2, Ui.OUTLINE));
+
+        JPanel brand = new JPanel();
+        brand.setOpaque(false);
+        brand.setLayout(new BoxLayout(brand, BoxLayout.Y_AXIS));
+        brand.setBorder(new EmptyBorder(24, 24, 22, 18));
+        JLabel name = new JLabel("馆藏通");
+        name.setFont(Ui.serifFont(Font.BOLD, 28f));
+        name.setForeground(Ui.INK);
+        JLabel edition = Ui.eyebrow("LIBRARY DESK / 2026");
+        JLabel role = Ui.muted(current.role() == Role.ADMIN ? "管理员工作台" : "读者服务台");
+        name.setAlignmentX(Component.LEFT_ALIGNMENT);
+        edition.setAlignmentX(Component.LEFT_ALIGNMENT);
+        role.setAlignmentX(Component.LEFT_ALIGNMENT);
+        brand.add(name);
+        brand.add(Box.createVerticalStrut(6));
+        brand.add(edition);
+        brand.add(Box.createVerticalStrut(8));
+        brand.add(role);
+        sidebar.add(brand, BorderLayout.NORTH);
+
+        JPanel navigation = new JPanel();
+        navigation.setOpaque(false);
+        navigation.setLayout(new BoxLayout(navigation, BoxLayout.Y_AXIS));
+        navigation.setBorder(new EmptyBorder(16, 14, 12, 14));
+        ButtonGroup group = new ButtonGroup();
+        JToggleButton first = null;
+        for (LibraryNavigation.Item item : LibraryNavigation.forRole(current.role())) {
+            JToggleButton button = Ui.navigation(item.label(), item.glyph());
+            button.addActionListener(event -> showPage(item));
+            group.add(button);
+            navigation.add(button);
+            navigation.add(Box.createVerticalStrut(6));
+            if (first == null) first = button;
+        }
+        if (first != null) first.setSelected(true);
+        sidebar.add(navigation, BorderLayout.CENTER);
+
+        JPanel bottom = new JPanel(new BorderLayout());
+        bottom.setOpaque(false);
+        bottom.setBorder(
+                BorderFactory.createCompoundBorder(
+                        new MatteBorder(1, 0, 0, 0, Ui.OUTLINE_SOFT),
+                        new EmptyBorder(12, 14, 14, 14)));
+        JButton logout = Ui.danger("退出登录");
+        logout.addActionListener(event -> logout());
+        bottom.add(logout);
+        sidebar.add(bottom, BorderLayout.SOUTH);
+        return sidebar;
+    }
+
+    private void showPage(LibraryNavigation.Item item) {
+        pageGlyph.setText(item.glyph());
+        pageTitle.setText(item.label());
+        pageLayout.show(pages, item.id());
+    }
+
+    private void logout() {
+        dispose();
+        new LoginFrame(service).setVisible(true);
+    }
+
+    private String accountText() {
+        return current.fullName() + " · " + (current.role() == Role.ADMIN ? "管理员" : "读者");
     }
 
     private JPanel dashboardPanel() {
-        JPanel p = Ui.panel(new BorderLayout(0, 16));
+        JPanel p = Ui.panel(new BorderLayout(0, 14));
         JPanel top = new JPanel(new BorderLayout());
         top.setOpaque(false);
-        top.add(Ui.title("运行总览"), BorderLayout.WEST);
-        JButton refresh = new JButton("刷新");
+        JPanel context = new JPanel();
+        context.setOpaque(false);
+        context.setLayout(new BoxLayout(context, BoxLayout.Y_AXIS));
+        JLabel eyebrow = Ui.eyebrow("COLLECTION STATUS");
+        JLabel note = Ui.muted("馆藏、流通与预约状态实时汇总");
+        eyebrow.setAlignmentX(Component.LEFT_ALIGNMENT);
+        note.setAlignmentX(Component.LEFT_ALIGNMENT);
+        context.add(eyebrow);
+        context.add(Box.createVerticalStrut(4));
+        context.add(note);
+        top.add(context, BorderLayout.WEST);
+        JButton refresh = Ui.secondary("刷新数据");
         refresh.addActionListener(e -> refreshAll());
         top.add(refresh, BorderLayout.EAST);
         p.add(top, BorderLayout.NORTH);
-        dashboardMetrics = new JPanel(new GridLayout(2, 3, 12, 12));
+
+        JPanel body = new JPanel(new BorderLayout(0, 14));
+        body.setOpaque(false);
+        dashboardMetrics = new JPanel(new GridLayout(1, 4, 14, 0));
         dashboardMetrics.setOpaque(false);
-        p.add(dashboardMetrics, BorderLayout.CENTER);
+        dashboardMetrics.setPreferredSize(new Dimension(1, 132));
+        body.add(dashboardMetrics, BorderLayout.NORTH);
+
+        JPanel details = new JPanel(new GridBagLayout());
+        details.setOpaque(false);
+        GridBagConstraints constraints = new GridBagConstraints();
+        constraints.gridy = 0;
+        constraints.fill = GridBagConstraints.BOTH;
+        constraints.weighty = 1;
+
+        PaperPanel chartPaper = Ui.paper(new BorderLayout(0, 8));
+        JPanel chartHeader = new JPanel(new BorderLayout());
+        chartHeader.setOpaque(false);
+        chartHeader.add(Ui.sectionTitle("热门借阅趋势"), BorderLayout.WEST);
+        dashboardMeta = Ui.muted("");
+        chartHeader.add(dashboardMeta, BorderLayout.EAST);
+        chartPaper.add(chartHeader, BorderLayout.NORTH);
+        chartPaper.add(dashboardRanking, BorderLayout.CENTER);
+        constraints.gridx = 0;
+        constraints.weightx = 0.60;
+        constraints.insets = new Insets(0, 0, 0, 14);
+        details.add(chartPaper, constraints);
+
+        PaperPanel recentPaper = Ui.paper(new BorderLayout(0, 8));
+        recentPaper.add(Ui.sectionTitle("近期借阅记录"), BorderLayout.NORTH);
+        recentPaper.setPadding(16, 14, 16, 14);
+        recentLoanModel = Ui.model("借阅记录", "状态");
+        JTable[] recentHolder = new JTable[1];
+        recentPaper.add(Ui.table(recentLoanModel, recentHolder), BorderLayout.CENTER);
+        recentHolder[0].setAutoResizeMode(JTable.AUTO_RESIZE_ALL_COLUMNS);
+        recentHolder[0].getColumnModel().getColumn(0).setPreferredWidth(150);
+        recentHolder[0].getColumnModel().getColumn(1).setPreferredWidth(60);
+        constraints.gridx = 1;
+        constraints.weightx = 0.40;
+        constraints.insets = new Insets(0, 0, 0, 0);
+        details.add(recentPaper, constraints);
+        body.add(details, BorderLayout.CENTER);
+        p.add(body, BorderLayout.CENTER);
         refreshers.add(this::refreshDashboard);
         return p;
     }
@@ -105,32 +249,41 @@ public final class LibraryFrame extends JFrame {
     private void refreshDashboard() {
         Dashboard d = service.dashboard();
         dashboardMetrics.removeAll();
-        dashboardMetrics.add(metric("图书品种", d.bookKinds() + " 种"));
-        dashboardMetrics.add(metric("馆藏总量", d.totalCopies() + " 册"));
-        dashboardMetrics.add(metric("当前可借", d.availableCopies() + " 册"));
-        dashboardMetrics.add(metric("在借记录", d.activeLoans() + " 条"));
-        dashboardMetrics.add(metric("有效预约", d.waitingReservations() + " 条"));
-        dashboardMetrics.add(metric("待缴罚款", "¥ " + d.unpaidFines()));
+        dashboardMetrics.add(metric("馆藏总量", d.totalCopies() + " 册", Ui.OUTLINE));
+        dashboardMetrics.add(metric("当前可借", d.availableCopies() + " 册", Ui.SUCCESS));
+        dashboardMetrics.add(metric("在借记录", d.activeLoans() + " 条", Ui.INK));
+        dashboardMetrics.add(metric("有效预约", d.waitingReservations() + " 条", Ui.ACCENT));
+        List<Ranking> rankings = service.rankings();
+        dashboardRanking.setRows(rankings);
+        dashboardMeta.setText("图书品种 " + d.bookKinds() + " · 待缴 ¥" + d.unpaidFines());
+        List<Loan> recent =
+                service.loans(current.role() == Role.READER ? current.id() : null, false).stream()
+                        .limit(6)
+                        .toList();
+        recentLoanModel.setRowCount(0);
+        for (Loan loan : recent) {
+            recentLoanModel.addRow(
+                    new Object[] {
+                        loan.readerName() + " · " + loan.bookTitle(), status(loan.status())
+                    });
+        }
+        if (recent.isEmpty()) recentLoanModel.addRow(new Object[] {"暂无借阅记录", "—"});
         dashboardMetrics.revalidate();
         dashboardMetrics.repaint();
     }
 
-    private JPanel metric(String label, String value) {
-        JPanel p = new JPanel(new GridBagLayout());
-        p.setBackground(Color.WHITE);
-        p.setBorder(
-                BorderFactory.createCompoundBorder(
-                        BorderFactory.createLineBorder(new Color(226, 232, 240)),
-                        new EmptyBorder(16, 18, 16, 18)));
+    private JPanel metric(String label, String value, Color accent) {
+        PaperPanel p = Ui.paper(new GridBagLayout(), accent);
+        p.setPadding(16, 18, 14, 18);
         GridBagConstraints g = new GridBagConstraints();
         g.gridx = 0;
         g.anchor = GridBagConstraints.WEST;
-        JLabel l = Ui.muted(label);
+        JLabel l = Ui.eyebrow(label);
         p.add(l, g);
         g.gridy = 1;
         g.insets = new Insets(8, 0, 0, 0);
         JLabel v = new JLabel(value);
-        v.setFont(v.getFont().deriveFont(Font.BOLD, 28f));
+        v.setFont(Ui.serifFont(Font.BOLD, 30f));
         v.setForeground(Ui.INK);
         p.add(v, g);
         return p;
@@ -140,34 +293,56 @@ public final class LibraryFrame extends JFrame {
         JPanel p = Ui.panel(new BorderLayout(0, 14));
         searchField = new JComboBox<>(new String[] {"书名", "作者", "出版社", "ISBN"});
         keyword = new JTextField(22);
+        Ui.styleField(searchField);
+        Ui.styleField(keyword);
         JButton search = Ui.primary("查询");
         search.addActionListener(e -> refreshBooks());
-        JPanel top = new JPanel(new BorderLayout());
+        JPanel top = new JPanel(new BorderLayout(18, 0));
         top.setOpaque(false);
-        top.add(Ui.title("馆藏检索"), BorderLayout.WEST);
-        JPanel actions = Ui.toolbar(searchField, keyword, search);
+        JPanel title = new JPanel();
+        title.setOpaque(false);
+        title.setLayout(new BoxLayout(title, BoxLayout.Y_AXIS));
+        JLabel heading = Ui.title("馆藏目录");
+        JLabel note = Ui.muted("按书名、作者、出版社或 ISBN 检索馆藏");
+        heading.setAlignmentX(Component.LEFT_ALIGNMENT);
+        note.setAlignmentX(Component.LEFT_ALIGNMENT);
+        title.add(heading);
+        title.add(Box.createVerticalStrut(4));
+        title.add(note);
+        top.add(title, BorderLayout.WEST);
+
+        JPanel filters = Ui.toolbar(searchField, keyword, search);
+        JPanel commands = Ui.toolbar();
         JButton borrow = Ui.primary("借阅");
         borrow.addActionListener(e -> borrowSelected());
-        JButton reserve = new JButton("预约");
+        JButton reserve = Ui.secondary("预约");
         reserve.addActionListener(e -> reserveSelected());
-        actions.add(borrow);
-        actions.add(reserve);
+        commands.add(borrow);
+        commands.add(reserve);
         if (current.role() == Role.ADMIN) {
-            JButton add = new JButton("新增");
+            JButton add = Ui.secondary("新增");
             add.addActionListener(e -> editBook(null));
-            JButton edit = new JButton("修改");
+            JButton edit = Ui.secondary("修改");
             edit.addActionListener(
                     e -> {
                         int i = Ui.selected(bookTable);
                         if (i < 0) Ui.info(this, "请先选择图书");
                         else editBook(bookRows.get(i));
                     });
-            JButton delete = new JButton("删除");
+            JButton delete = Ui.danger("删除");
             delete.addActionListener(e -> deleteBook());
-            actions.add(add);
-            actions.add(edit);
-            actions.add(delete);
+            commands.add(add);
+            commands.add(edit);
+            commands.add(delete);
         }
+        JPanel actions = new JPanel();
+        actions.setOpaque(false);
+        actions.setLayout(new BoxLayout(actions, BoxLayout.Y_AXIS));
+        filters.setAlignmentX(Component.LEFT_ALIGNMENT);
+        commands.setAlignmentX(Component.LEFT_ALIGNMENT);
+        actions.add(filters);
+        actions.add(Box.createVerticalStrut(8));
+        actions.add(commands);
         top.add(actions, BorderLayout.EAST);
         p.add(top, BorderLayout.NORTH);
         bookModel = Ui.model("ID", "ISBN", "书名", "作者", "出版社", "分类", "馆藏", "可借", "位置");
@@ -310,11 +485,11 @@ public final class LibraryFrame extends JFrame {
         JPanel top = new JPanel(new BorderLayout());
         top.setOpaque(false);
         top.add(Ui.title(current.role() == Role.ADMIN ? "借还工作台" : "我的借阅"), BorderLayout.WEST);
-        JButton renew = new JButton("续借");
+        JButton renew = Ui.secondary("续借");
         renew.addActionListener(e -> renewLoan());
         JButton giveBack = Ui.primary("归还");
         giveBack.addActionListener(e -> returnLoan());
-        JButton refresh = new JButton("刷新");
+        JButton refresh = Ui.secondary("刷新");
         refresh.addActionListener(e -> refreshLoans());
         top.add(Ui.toolbar(renew, giveBack, refresh), BorderLayout.EAST);
         p.add(top, BorderLayout.NORTH);
@@ -378,9 +553,9 @@ public final class LibraryFrame extends JFrame {
         JPanel top = new JPanel(new BorderLayout());
         top.setOpaque(false);
         top.add(Ui.title("预约管理"), BorderLayout.WEST);
-        JButton cancel = new JButton("取消预约");
+        JButton cancel = Ui.danger("取消预约");
         cancel.addActionListener(e -> cancelReservation());
-        JButton refresh = new JButton("刷新");
+        JButton refresh = Ui.secondary("刷新");
         refresh.addActionListener(e -> refreshReservations());
         top.add(Ui.toolbar(cancel, refresh), BorderLayout.EAST);
         p.add(top, BorderLayout.NORTH);
@@ -433,7 +608,7 @@ public final class LibraryFrame extends JFrame {
         top.add(Ui.title("罚款记录"), BorderLayout.WEST);
         JButton pay = Ui.primary("确认缴费");
         pay.addActionListener(e -> payFine());
-        JButton refresh = new JButton("刷新");
+        JButton refresh = Ui.secondary("刷新");
         refresh.addActionListener(e -> refreshFines());
         top.add(Ui.toolbar(pay, refresh), BorderLayout.EAST);
         p.add(top, BorderLayout.NORTH);
@@ -486,7 +661,7 @@ public final class LibraryFrame extends JFrame {
         JPanel top = new JPanel(new BorderLayout());
         top.setOpaque(false);
         top.add(Ui.title("读者与借阅证"), BorderLayout.WEST);
-        JButton add = new JButton("新增读者");
+        JButton add = Ui.secondary("新增读者");
         add.addActionListener(e -> addReader());
         JButton toggle = Ui.primary("启用 / 停用借阅证");
         toggle.addActionListener(e -> toggleCard());
@@ -569,19 +744,28 @@ public final class LibraryFrame extends JFrame {
         JPanel top = new JPanel(new BorderLayout());
         top.setOpaque(false);
         top.add(Ui.title("热门图书排行榜"), BorderLayout.WEST);
-        JButton refresh = new JButton("刷新统计");
+        JButton refresh = Ui.secondary("刷新统计");
         refresh.addActionListener(e -> refreshStats());
         top.add(refresh, BorderLayout.EAST);
         p.add(top, BorderLayout.NORTH);
         rankingModel = Ui.model("排名", "书名", "作者", "累计借阅次数");
         JTable[] h = new JTable[1];
-        p.add(Ui.table(rankingModel, h), BorderLayout.CENTER);
+        statisticsChart = new RankingChart();
+        PaperPanel chart = Ui.paper(new BorderLayout(0, 8));
+        chart.add(Ui.eyebrow("BORROWING RANK"), BorderLayout.NORTH);
+        chart.add(statisticsChart, BorderLayout.CENTER);
+        JPanel content = new JPanel(new GridLayout(1, 2, 14, 0));
+        content.setOpaque(false);
+        content.add(chart);
+        content.add(Ui.table(rankingModel, h));
+        p.add(content, BorderLayout.CENTER);
         refreshers.add(this::refreshStats);
         return p;
     }
 
     private void refreshStats() {
         List<Ranking> rows = service.rankings();
+        statisticsChart.setRows(rows);
         rankingModel.setRowCount(0);
         for (int i = 0; i < rows.size(); i++) {
             Ranking r = rows.get(i);
@@ -614,6 +798,7 @@ public final class LibraryFrame extends JFrame {
                                 email.getText().trim(),
                                 current.role(),
                                 current.cardStatus());
+                accountLabel.setText(accountText());
                 Ui.info(this, "资料已更新");
             } catch (Exception e) {
                 Ui.error(this, e);
