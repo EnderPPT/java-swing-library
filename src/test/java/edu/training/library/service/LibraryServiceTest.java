@@ -26,10 +26,9 @@ class LibraryServiceTest {
         String url = setting("LIBRARY_TEST_DB_URL");
         assumeTrue(url != null && !url.isBlank(), "未设置 LIBRARY_TEST_DB_URL，跳过 MySQL 集成测试");
         assumeTrue(url.startsWith("jdbc:mysql:"), "测试数据库必须是 MySQL");
-        int nameStart = url.lastIndexOf('/') + 1;
-        int nameEnd = url.indexOf('?', nameStart);
-        String databaseName =
-                url.substring(nameStart, nameEnd < 0 ? url.length() : nameEnd).toLowerCase();
+        int queryStart = url.indexOf('?');
+        String base = queryStart < 0 ? url : url.substring(0, queryStart);
+        String databaseName = base.substring(base.lastIndexOf('/') + 1).toLowerCase();
         assumeTrue(databaseName.contains("library_test"), "测试库名称必须包含 library_test");
         String user = setting("LIBRARY_TEST_DB_USER", "library");
         String password = setting("LIBRARY_TEST_DB_PASSWORD", "");
