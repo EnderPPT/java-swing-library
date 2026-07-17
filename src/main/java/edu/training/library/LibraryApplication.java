@@ -5,6 +5,7 @@ import edu.training.library.db.Database;
 import edu.training.library.db.LibraryRepository;
 import edu.training.library.service.LibraryService;
 import edu.training.library.ui.LoginFrame;
+import edu.training.library.ui.Ui;
 import java.awt.*;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -16,12 +17,7 @@ public final class LibraryApplication {
     public static void main(String[] args) {
         System.setProperty("sun.java2d.uiScale.enabled", "true");
         FlatLightLaf.setup();
-        UIManager.put("Component.arc", 6);
-        UIManager.put("Button.arc", 6);
-        UIManager.put("TextComponent.arc", 5);
-        UIManager.put("Table.rowHeight", 34);
-        UIManager.put("ScrollBar.width", 12);
-        UIManager.put("defaultFont", new Font("Microsoft YaHei UI", Font.PLAIN, 14));
+        Ui.installDefaults();
         SwingUtilities.invokeLater(
                 () -> {
                     try {
