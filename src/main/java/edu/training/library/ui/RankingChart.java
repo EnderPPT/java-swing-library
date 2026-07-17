@@ -66,28 +66,39 @@ final class RankingChart extends JComponent {
         }
         int slot = Math.max(1, width / rows.size());
         int barWidth = Math.max(18, Math.min(52, slot - 16));
+        // 柱高按 height-18 缩放，给最高柱的数值标签留出空间
+        int barSpace = Math.max(1, height - 18);
         for (int index = 0; index < rows.size(); index++) {
             Ranking ranking = rows.get(index);
-            int barHeight = (int) Math.round((double) ranking.borrowCount() / maximum * height);
+            int barHeight = (int) Math.round((double) ranking.borrowCount() / maximum * barSpace);
             int x = left + index * slot + (slot - barWidth) / 2;
             int y = top + height - barHeight;
-            copy.setColor(index == 0 ? Ui.INK : new Color(116, 119, 111));
+            copy.setColor(index == 0 ? Ui.INK : Ui.PAPER_DARK);
             copy.fillRect(x, y, barWidth, barHeight);
+            if (barHeight > 0) {
+                copy.setColor(Ui.OUTLINE);
+                copy.drawRect(x, y, barWidth, barHeight);
+            }
             copy.setColor(Ui.INK);
             copy.setFont(Ui.monoFont(Font.BOLD, 11f));
             String value = String.valueOf(ranking.borrowCount());
             int valueWidth = copy.getFontMetrics().stringWidth(value);
-            copy.drawString(value, x + (barWidth - valueWidth) / 2, Math.max(top + 12, y - 6));
+            copy.drawString(value, x + (barWidth - valueWidth) / 2, y - 6);
             copy.setFont(Ui.bodyFont(Font.PLAIN, 11f));
-            String label = ellipsis(ranking.title(), 6);
+            String label = fit(copy.getFontMetrics(), ranking.title(), slot - 6);
             int labelWidth = copy.getFontMetrics().stringWidth(label);
             copy.drawString(label, x + (barWidth - labelWidth) / 2, top + height + 22);
         }
         copy.dispose();
     }
 
-    private static String ellipsis(String text, int maximumLength) {
-        return text.length() <= maximumLength ? text : text.substring(0, maximumLength - 1) + "…";
+    private static String fit(FontMetrics metrics, String text, int available) {
+        if (metrics.stringWidth(text) <= available) return text;
+        String shortened = text;
+        while (shortened.length() > 1 && metrics.stringWidth(shortened + "…") > available) {
+            shortened = shortened.substring(0, shortened.length() - 1);
+        }
+        return shortened + "…";
     }
 
     @Override

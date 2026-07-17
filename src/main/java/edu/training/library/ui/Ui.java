@@ -232,9 +232,12 @@ public final class Ui {
     private static int columnWidth(String name) {
         if (name.contains("时间") || name.contains("日期")) return 148;
         if (name.contains("书名") || name.contains("原因")) return 170;
-        if (name.contains("出版社") || name.contains("邮箱")) return 150;
+        if (name.contains("出版社")) return 150;
+        if (name.contains("邮箱")) return 190;
+        if (name.contains("作者") || name.contains("姓名")) return 150;
+        if (name.contains("手机")) return 130;
         if (name.contains("ISBN")) return 128;
-        if (name.contains("状态") || name.contains("提醒")) return 96;
+        if (name.contains("状态") || name.contains("提醒")) return 110;
         return Math.max(90, name.length() * 16 + 28);
     }
 
@@ -366,6 +369,8 @@ public final class Ui {
     }
 
     private static final class StatusRenderer extends CatalogCellRenderer {
+        private boolean danger;
+
         @Override
         public Component getTableCellRendererComponent(
                 JTable table,
@@ -379,7 +384,7 @@ public final class Ui {
                             super.getTableCellRendererComponent(
                                     table, value, selected, focused, row, column);
             String text = value == null ? "" : value.toString();
-            boolean danger =
+            danger =
                     text.contains("逾期")
                             || text.contains("待缴")
                             || text.contains("停用")
@@ -387,11 +392,24 @@ public final class Ui {
             label.setHorizontalAlignment(SwingConstants.CENTER);
             label.setFont(bodyFont(Font.BOLD, 12f));
             label.setForeground(danger ? Ui.ERROR : INK);
-            label.setBorder(
-                    BorderFactory.createCompoundBorder(
-                            BorderFactory.createLineBorder(danger ? Ui.ERROR : OUTLINE),
-                            new EmptyBorder(3, 4, 3, 4)));
+            label.setBorder(new EmptyBorder(0, 4, 0, 4));
             return label;
+        }
+
+        @Override
+        protected void paintComponent(Graphics graphics) {
+            super.paintComponent(graphics);
+            // 只围着文字画标签框，避免边框撑满整个 44px 高的单元格
+            String text = getText();
+            if (text != null && !text.isBlank() && !"—".equals(text) && !"-".equals(text)) {
+                FontMetrics metrics = getFontMetrics(getFont());
+                int width = Math.min(getWidth() - 4, metrics.stringWidth(text) + 18);
+                int height = metrics.getHeight() + 8;
+                int x = (getWidth() - width) / 2;
+                int y = (getHeight() - height) / 2;
+                graphics.setColor(danger ? Ui.ERROR : OUTLINE);
+                graphics.drawRect(x, y, width - 1, height - 1);
+            }
         }
     }
 
