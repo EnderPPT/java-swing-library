@@ -284,6 +284,42 @@ public final class LibraryRepository {
         }
     }
 
+    public List<MonthlyStat> monthlyLoanCounts(int months) {
+        String sql =
+                "SELECT DATE_FORMAT(borrowed_at,'%Y-%m') ym,COUNT(*) FROM loans GROUP BY ym ORDER BY ym DESC LIMIT ?";
+        try (Connection c = database.connect();
+                PreparedStatement p = c.prepareStatement(sql)) {
+            p.setInt(1, months);
+            try (ResultSet r = p.executeQuery()) {
+                List<MonthlyStat> rows = new ArrayList<>();
+                while (r.next()) rows.add(new MonthlyStat(r.getString(1), r.getLong(2)));
+                java.util.Collections.reverse(rows);
+                return rows;
+            }
+        } catch (SQLException e) {
+            throw failure(e);
+        }
+    }
+
+    public List<CategoryStock> categoryStocks() {
+        String sql =
+                "SELECT COALESCE(c.name,'未分类'),COUNT(*),COALESCE(SUM(b.total_copies),0),COALESCE(SUM(b.available_copies),0) "
+                        + "FROM books b LEFT JOIN categories c ON c.id=b.category_id "
+                        + "GROUP BY c.name ORDER BY SUM(b.total_copies) DESC,c.name";
+        try (Connection c = database.connect();
+                PreparedStatement p = c.prepareStatement(sql);
+                ResultSet r = p.executeQuery()) {
+            List<CategoryStock> rows = new ArrayList<>();
+            while (r.next())
+                rows.add(
+                        new CategoryStock(
+                                r.getString(1), r.getLong(2), r.getLong(3), r.getLong(4)));
+            return rows;
+        } catch (SQLException e) {
+            throw failure(e);
+        }
+    }
+
     public Database database() {
         return database;
     }

@@ -79,4 +79,9 @@ public final class Models {
             BigDecimal unpaidFines) {}
 
     public record Ranking(String title, String author, long borrowCount) {}
+
+    public record MonthlyStat(String month, long borrowCount) {}
+
+    public record CategoryStock(
+            String category, long bookKinds, long totalCopies, long availableCopies) {}
 }

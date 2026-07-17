@@ -403,6 +403,14 @@ public final class LibraryService {
         return repository.rankings();
     }
 
+    public List<MonthlyStat> monthlyStats() {
+        return repository.monthlyLoanCounts(12);
+    }
+
+    public List<CategoryStock> categoryStocks() {
+        return repository.categoryStocks();
+    }
+
     public List<String> categories() {
         return repository.categories();
     }

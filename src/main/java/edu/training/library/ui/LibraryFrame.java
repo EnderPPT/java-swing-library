@@ -2,6 +2,7 @@ package edu.training.library.ui;
 
 import edu.training.library.model.Models.*;
 import edu.training.library.service.LibraryService;
+import edu.training.library.service.StatisticsExport;
 import java.awt.*;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -46,6 +47,8 @@ public final class LibraryFrame extends JFrame {
     private JLabel dashboardMeta;
     private DefaultTableModel rankingModel;
     private RankingChart statisticsChart;
+    private final RankingChart monthlyChart = new RankingChart();
+    private DefaultTableModel categoryModel;
 
     public LibraryFrame(LibraryService service, User user) {
         super("馆藏通 - " + user.fullName());
@@ -759,21 +762,36 @@ public final class LibraryFrame extends JFrame {
         JPanel p = Ui.panel(new BorderLayout(0, 14));
         JPanel top = new JPanel(new BorderLayout());
         top.setOpaque(false);
-        top.add(Ui.title("热门图书排行榜"), BorderLayout.WEST);
+        top.add(Ui.title("统计分析"), BorderLayout.WEST);
+        JButton export = Ui.primary("导出报表");
+        export.addActionListener(e -> exportStatistics());
         JButton refresh = Ui.secondary("刷新统计");
         refresh.addActionListener(e -> refreshStats());
-        top.add(refresh, BorderLayout.EAST);
+        top.add(Ui.toolbar(export, refresh), BorderLayout.EAST);
         p.add(top, BorderLayout.NORTH);
+
         rankingModel = Ui.model("排名", "书名", "作者", "累计借阅次数");
         JTable[] h = new JTable[1];
         statisticsChart = new RankingChart();
         PaperPanel chart = Ui.paper(new BorderLayout(0, 8));
-        chart.add(Ui.eyebrow("BORROWING RANK"), BorderLayout.NORTH);
+        chart.add(Ui.eyebrow("热门借阅排行"), BorderLayout.NORTH);
         chart.add(statisticsChart, BorderLayout.CENTER);
-        JPanel content = new JPanel(new GridLayout(1, 2, 14, 0));
+
+        PaperPanel monthlyPaper = Ui.paper(new BorderLayout(0, 8));
+        monthlyPaper.add(Ui.eyebrow("月借阅统计"), BorderLayout.NORTH);
+        monthlyPaper.add(monthlyChart, BorderLayout.CENTER);
+
+        categoryModel = Ui.model("分类", "品种", "馆藏总量", "可借数量", "在借数量");
+        JTable[] categoryHolder = new JTable[1];
+        JScrollPane categoryTable = Ui.table(categoryModel, categoryHolder);
+        categoryHolder[0].setAutoResizeMode(JTable.AUTO_RESIZE_ALL_COLUMNS);
+
+        JPanel content = new JPanel(new GridLayout(2, 2, 14, 14));
         content.setOpaque(false);
         content.add(chart);
         content.add(Ui.table(rankingModel, h));
+        content.add(monthlyPaper);
+        content.add(categoryTable);
         p.add(content, BorderLayout.CENTER);
         refreshers.add(this::refreshStats);
         return p;
@@ -786,6 +804,46 @@ public final class LibraryFrame extends JFrame {
         for (int i = 0; i < rows.size(); i++) {
             Ranking r = rows.get(i);
             rankingModel.addRow(new Object[] {i + 1, r.title(), r.author(), r.borrowCount()});
+        }
+        monthlyChart.setRows(
+                service.monthlyStats().stream()
+                        .map(m -> new Ranking(m.month(), "", m.borrowCount()))
+                        .toList());
+        categoryModel.setRowCount(0);
+        for (CategoryStock s : service.categoryStocks())
+            categoryModel.addRow(
+                    new Object[] {
+                        s.category(),
+                        s.bookKinds(),
+                        s.totalCopies(),
+                        s.availableCopies(),
+                        s.totalCopies() - s.availableCopies()
+                    });
+    }
+
+    private void exportStatistics() {
+        JFileChooser chooser = new JFileChooser();
+        chooser.setDialogTitle("导出统计报表");
+        chooser.setSelectedFile(
+                new java.io.File(
+                        "统计报表-"
+                                + DateTimeFormatter.ofPattern("yyyyMMdd")
+                                        .format(java.time.LocalDate.now())
+                                + ".xlsx"));
+        if (chooser.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) return;
+        java.io.File file = chooser.getSelectedFile();
+        if (!file.getName().toLowerCase(java.util.Locale.ROOT).endsWith(".xlsx"))
+            file = new java.io.File(file.getParentFile(), file.getName() + ".xlsx");
+        try {
+            StatisticsExport.write(
+                    file.toPath(),
+                    service.dashboard(),
+                    service.rankings(),
+                    service.monthlyStats(),
+                    service.categoryStocks());
+            Ui.info(this, "报表已导出到 " + file.getAbsolutePath());
+        } catch (Exception e) {
+            Ui.error(this, e);
         }
     }
 
