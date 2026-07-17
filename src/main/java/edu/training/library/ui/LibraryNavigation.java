@@ -8,14 +8,19 @@ final class LibraryNavigation {
     private LibraryNavigation() {}
 
     static List<Item> forRole(Role role) {
+        List<String[]> entries = new ArrayList<>();
+        entries.add(new String[] {"dashboard", "总览"});
+        entries.add(new String[] {"books", role == Role.ADMIN ? "图书管理" : "馆藏检索"});
+        if (role == Role.ADMIN) entries.add(new String[] {"users", "读者管理"});
+        entries.add(new String[] {"loans", role == Role.ADMIN ? "借还管理" : "我的借阅"});
+        entries.add(new String[] {"reservations", "预约管理"});
+        entries.add(new String[] {"fines", "罚款记录"});
+        entries.add(new String[] {"statistics", "统计分析"});
         List<Item> items = new ArrayList<>();
-        items.add(new Item("dashboard", "01", "总览"));
-        items.add(new Item("books", "02", role == Role.ADMIN ? "图书管理" : "馆藏检索"));
-        if (role == Role.ADMIN) items.add(new Item("users", "03", "读者管理"));
-        items.add(new Item("loans", "04", role == Role.ADMIN ? "借还管理" : "我的借阅"));
-        items.add(new Item("reservations", "05", "预约管理"));
-        items.add(new Item("fines", "06", "罚款记录"));
-        items.add(new Item("statistics", "07", "统计分析"));
+        for (int index = 0; index < entries.size(); index++) {
+            String[] entry = entries.get(index);
+            items.add(new Item(entry[0], String.format("%02d", index + 1), entry[1]));
+        }
         return List.copyOf(items);
     }
 

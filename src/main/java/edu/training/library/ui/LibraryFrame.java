@@ -85,7 +85,8 @@ public final class LibraryFrame extends JFrame {
 
     private JPanel header() {
         JPanel panel = new JPanel(new BorderLayout(18, 0));
-        panel.setBackground(new Color(255, 255, 255, 220));
+        // 不透明面板不能用半透明色，否则会留下重绘残影
+        panel.setBackground(new Color(255, 253, 249));
         panel.setBorder(
                 BorderFactory.createCompoundBorder(
                         new MatteBorder(0, 0, 1, 0, Ui.OUTLINE_SOFT),
@@ -95,19 +96,23 @@ public final class LibraryFrame extends JFrame {
         JPanel heading = Ui.toolbar(pageGlyph, pageTitle);
         pageGlyph.setFont(Ui.bodyFont(Font.BOLD, 24f));
         pageTitle.setFont(Ui.serifFont(Font.BOLD, 22f));
-        panel.add(heading, BorderLayout.WEST);
+        panel.add(centered(heading), BorderLayout.WEST);
 
         accountLabel.setText(accountText());
         accountLabel.setFont(Ui.bodyFont(Font.PLAIN, 13f));
         accountLabel.setForeground(Ui.MUTED);
         JButton profile = Ui.secondary("个人资料");
         profile.addActionListener(e -> editProfile());
-        JButton logout = Ui.danger("退出");
-        logout.addActionListener(e -> logout());
-        JPanel right = Ui.toolbar(accountLabel, profile, logout);
-        right.setAlignmentY(Component.CENTER_ALIGNMENT);
-        panel.add(right, BorderLayout.EAST);
+        JPanel right = Ui.toolbar(accountLabel, profile);
+        panel.add(centered(right), BorderLayout.EAST);
         return panel;
+    }
+
+    private static JPanel centered(JComponent component) {
+        JPanel wrapper = new JPanel(new GridBagLayout());
+        wrapper.setOpaque(false);
+        wrapper.add(component);
+        return wrapper;
     }
 
     private JPanel sidebar() {
@@ -277,6 +282,7 @@ public final class LibraryFrame extends JFrame {
         p.setPadding(16, 18, 14, 18);
         GridBagConstraints g = new GridBagConstraints();
         g.gridx = 0;
+        g.weightx = 1;
         g.anchor = GridBagConstraints.WEST;
         JLabel l = Ui.eyebrow(label);
         p.add(l, g);
@@ -315,10 +321,12 @@ public final class LibraryFrame extends JFrame {
         JPanel commands = Ui.toolbar();
         JButton borrow = Ui.primary("借阅");
         borrow.addActionListener(e -> borrowSelected());
-        JButton reserve = Ui.secondary("预约");
-        reserve.addActionListener(e -> reserveSelected());
         commands.add(borrow);
-        commands.add(reserve);
+        if (current.role() == Role.READER) {
+            JButton reserve = Ui.secondary("预约");
+            reserve.addActionListener(e -> reserveSelected());
+            commands.add(reserve);
+        }
         if (current.role() == Role.ADMIN) {
             JButton add = Ui.secondary("新增");
             add.addActionListener(e -> editBook(null));
@@ -553,11 +561,15 @@ public final class LibraryFrame extends JFrame {
         JPanel top = new JPanel(new BorderLayout());
         top.setOpaque(false);
         top.add(Ui.title("预约管理"), BorderLayout.WEST);
-        JButton cancel = Ui.danger("取消预约");
-        cancel.addActionListener(e -> cancelReservation());
         JButton refresh = Ui.secondary("刷新");
         refresh.addActionListener(e -> refreshReservations());
-        top.add(Ui.toolbar(cancel, refresh), BorderLayout.EAST);
+        if (current.role() == Role.READER) {
+            JButton cancel = Ui.danger("取消预约");
+            cancel.addActionListener(e -> cancelReservation());
+            top.add(Ui.toolbar(cancel, refresh), BorderLayout.EAST);
+        } else {
+            top.add(Ui.toolbar(refresh), BorderLayout.EAST);
+        }
         p.add(top, BorderLayout.NORTH);
         reservationModel = Ui.model("预约号", "读者", "书名", "预约时间", "保留至", "状态", "到馆提醒");
         JTable[] h = new JTable[1];
@@ -606,11 +618,15 @@ public final class LibraryFrame extends JFrame {
         JPanel top = new JPanel(new BorderLayout());
         top.setOpaque(false);
         top.add(Ui.title("罚款记录"), BorderLayout.WEST);
-        JButton pay = Ui.primary("确认缴费");
-        pay.addActionListener(e -> payFine());
         JButton refresh = Ui.secondary("刷新");
         refresh.addActionListener(e -> refreshFines());
-        top.add(Ui.toolbar(pay, refresh), BorderLayout.EAST);
+        if (current.role() == Role.READER) {
+            JButton pay = Ui.primary("确认缴费");
+            pay.addActionListener(e -> payFine());
+            top.add(Ui.toolbar(pay, refresh), BorderLayout.EAST);
+        } else {
+            top.add(Ui.toolbar(refresh), BorderLayout.EAST);
+        }
         p.add(top, BorderLayout.NORTH);
         fineModel = Ui.model("罚款号", "读者", "图书", "金额", "原因", "状态", "缴费时间");
         JTable[] h = new JTable[1];
