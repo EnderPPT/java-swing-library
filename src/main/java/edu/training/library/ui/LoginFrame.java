@@ -107,7 +107,7 @@ public final class LoginFrame extends JFrame {
         content.add(usernameLabel);
         content.add(Box.createVerticalStrut(6));
         Ui.styleField(username);
-        username.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
+        styleLoginControl(username);
         content.add(username);
         content.add(Box.createVerticalStrut(12));
         JLabel passwordLabel = label("密码");
@@ -115,37 +115,34 @@ public final class LoginFrame extends JFrame {
         content.add(passwordLabel);
         content.add(Box.createVerticalStrut(6));
         Ui.styleField(password);
-        password.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
+        styleLoginControl(password);
         content.add(password);
         content.add(Box.createVerticalStrut(16));
         loginButton = Ui.primary("登录");
-        loginButton.setAlignmentX(LEFT_ALIGNMENT);
-        loginButton.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
+        styleLoginAction(loginButton);
         loginButton.addActionListener(e -> login());
         content.add(loginButton);
         content.add(Box.createVerticalStrut(10));
         JButton register = Ui.secondary("注册读者账号");
-        register.setAlignmentX(LEFT_ALIGNMENT);
-        register.setMaximumSize(new Dimension(Integer.MAX_VALUE, 38));
+        styleLoginAction(register);
         register.addActionListener(e -> register());
         content.add(register);
-        content.add(Box.createVerticalStrut(12));
-        JSeparator rule = new JSeparator();
-        rule.setForeground(Ui.OUTLINE_SOFT);
-        rule.setMaximumSize(new Dimension(Integer.MAX_VALUE, 1));
-        content.add(rule);
-        content.add(Box.createVerticalStrut(8));
-        JLabel demo =
-                new JLabel(
-                        "<html>管理员账号&nbsp; admin / admin123<br>读者账号&nbsp; reader / reader123</html>");
-        demo.setFont(Ui.bodyFont(Font.PLAIN, 11f));
-        demo.setForeground(Ui.MUTED);
-        demo.setAlignmentX(LEFT_ALIGNMENT);
-        content.add(demo);
         p.add(content, BorderLayout.CENTER);
-        p.setPreferredSize(new Dimension(390, 430));
+        p.setPreferredSize(new Dimension(390, 410));
         outer.add(p);
         return outer;
+    }
+
+    private static void styleLoginControl(JComponent component) {
+        Dimension size = new Dimension(320, 40);
+        component.setAlignmentX(LEFT_ALIGNMENT);
+        component.setPreferredSize(size);
+        component.setMinimumSize(size);
+        component.setMaximumSize(size);
+    }
+
+    private static void styleLoginAction(JButton button) {
+        styleLoginControl(button);
     }
 
     private JButton findLoginButton() {
