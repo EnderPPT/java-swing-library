@@ -314,8 +314,7 @@ class LibraryServiceTest {
     void userCanChangePassword() {
         service.changePassword(reader.id(), "reader123", "newPassword123", "newPassword123");
 
-        assertThrows(
-                IllegalArgumentException.class, () -> service.login("reader01", "reader123"));
+        assertThrows(IllegalArgumentException.class, () -> service.login("reader01", "reader123"));
         assertEquals(reader.id(), service.login("reader01", "newPassword123").id());
         assertThrows(
                 IllegalArgumentException.class,

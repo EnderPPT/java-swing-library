@@ -29,7 +29,8 @@ class StatisticsExportTest {
                 List.of(new CategoryStock("科幻", 3, 10, 7)));
 
         assertTrue(Files.size(file) > 0);
-        try (var input = Files.newInputStream(file); var workbook = new XSSFWorkbook(input)) {
+        try (var input = Files.newInputStream(file);
+                var workbook = new XSSFWorkbook(input)) {
             assertEquals(4, workbook.getNumberOfSheets());
             assertEquals("统计总览", workbook.getSheetName(0));
             assertEquals("热门排行", workbook.getSheetName(1));

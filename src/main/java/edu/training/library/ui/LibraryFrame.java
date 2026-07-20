@@ -47,8 +47,7 @@ public final class LibraryFrame extends JFrame {
     private JLabel dashboardMeta;
     private DefaultTableModel rankingModel;
     private RankingChart statisticsChart;
-    private final RankingChart monthlyChart =
-            new RankingChart("月借阅统计图", "月借阅统计", "暂无月借阅数据");
+    private final RankingChart monthlyChart = new RankingChart("月借阅统计图", "月借阅统计", "暂无月借阅数据");
     private DefaultTableModel categoryModel;
 
     public LibraryFrame(LibraryService service, User user) {
@@ -292,9 +291,7 @@ public final class LibraryFrame extends JFrame {
         recentLoanModel.setRowCount(0);
         for (Loan loan : recent) {
             recentLoanModel.addRow(
-                    new Object[] {
-                        loan.readerName() + " · " + loan.bookTitle(), loanStatus(loan)
-                    });
+                    new Object[] {loan.readerName() + " · " + loan.bookTitle(), loanStatus(loan)});
         }
         if (recent.isEmpty()) recentLoanModel.addRow(new Object[] {"暂无借阅记录", "—"});
         dashboardMetrics.revalidate();
@@ -408,7 +405,9 @@ public final class LibraryFrame extends JFrame {
 
         add.addActionListener(
                 e -> {
-                    String name = JOptionPane.showInputDialog(this, "请输入分类名称", "新增分类", JOptionPane.PLAIN_MESSAGE);
+                    String name =
+                            JOptionPane.showInputDialog(
+                                    this, "请输入分类名称", "新增分类", JOptionPane.PLAIN_MESSAGE);
                     if (name == null) return;
                     try {
                         service.addCategory(name);
@@ -496,10 +495,7 @@ public final class LibraryFrame extends JFrame {
         if (current.role() == Role.ADMIN) {
             List<User> readers =
                     service.users().stream()
-                            .filter(
-                                    u ->
-                                            u.role() == Role.READER
-                                                    && "ACTIVE".equals(u.cardStatus()))
+                            .filter(u -> u.role() == Role.READER && "ACTIVE".equals(u.cardStatus()))
                             .toList();
             if (readers.isEmpty()) {
                 Ui.info(this, "暂无可办理借阅的读者");
@@ -949,10 +945,7 @@ public final class LibraryFrame extends JFrame {
         List<MonthlyStat> monthly = service.monthlyStats();
         monthlyChart.setRows(
                 monthly.subList(Math.max(0, monthly.size() - 7), monthly.size()).stream()
-                        .map(
-                                m ->
-                                        new Ranking(
-                                                m.month().substring(5) + "月", "", m.borrowCount()))
+                        .map(m -> new Ranking(m.month().substring(5) + "月", "", m.borrowCount()))
                         .toList());
         categoryModel.setRowCount(0);
         for (CategoryStock s : service.categoryStocks())
@@ -979,8 +972,7 @@ public final class LibraryFrame extends JFrame {
         java.io.File file = chooser.getSelectedFile();
         if (!file.getName().toLowerCase(java.util.Locale.ROOT).endsWith(".xlsx"))
             file = new java.io.File(file.getParentFile(), file.getName() + ".xlsx");
-        if (file.exists()
-                && !Ui.confirm(this, "文件“" + file.getName() + "”已存在，确认覆盖？")) return;
+        if (file.exists() && !Ui.confirm(this, "文件“" + file.getName() + "”已存在，确认覆盖？")) return;
         try {
             StatisticsExport.write(
                     file.toPath(),
