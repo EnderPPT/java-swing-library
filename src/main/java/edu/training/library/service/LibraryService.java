@@ -11,6 +11,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 public final class LibraryService {
@@ -30,26 +31,146 @@ public final class LibraryService {
     }
 
     public void seedDemoData() {
-        if (repository.findAuth("admin").isEmpty())
-            register(
-                    "admin", "admin123", "系统管理员", "13800000000", "admin@library.local", Role.ADMIN);
-        if (repository.findAuth("reader").isEmpty())
-            register(
-                    "reader",
-                    "reader123",
-                    "演示读者",
-                    "13900000000",
-                    "reader@library.local",
-                    Role.READER);
-        if (repository.books("书名", "").isEmpty()) {
-            repository.addBook(
-                    "9787111213826", "Java编程思想", "Bruce Eckel", "机械工业出版社", "计算机", 5, "A-01");
-            repository.addBook(
-                    "9787115428028", "深入理解计算机系统", "Randal E. Bryant", "人民邮电出版社", "计算机", 3, "A-02");
-            repository.addBook("9787020002207", "红楼梦", "曹雪芹", "人民文学出版社", "文学", 4, "B-01");
-            repository.addBook("9787101003048", "史记", "司马迁", "中华书局", "历史", 2, "C-01");
-            repository.addBook("9787544253994", "百年孤独", "加西亚·马尔克斯", "南海出版公司", "文学", 3, "B-02");
-        }
+        if (!repository.users().isEmpty() || !repository.books("书名", "").isEmpty()) return;
+        ensureAccount(
+                "admin", "admin123", "系统管理员", "13800000000", "admin@library.local", Role.ADMIN);
+        ensureAccount(
+                "reader", "reader123", "演示读者", "13900000000", "reader@library.local", Role.READER);
+        String[][] extraReaders = {
+            {"reader01", "张同学", "13800138001", "reader01@library.local"},
+            {"reader02", "李同学", "13800138002", "reader02@library.local"},
+            {"reader03", "王同学", "13800138003", "reader03@library.local"},
+            {"reader04", "赵同学", "13800138004", "reader04@library.local"},
+            {"reader05", "陈同学", "13800138005", "reader05@library.local"},
+            {"reader06", "刘同学", "13800138006", "reader06@library.local"}
+        };
+        for (String[] r : extraReaders)
+            ensureAccount(r[0], "reader123", r[1], r[2], r[3], Role.READER);
+
+        Object[][] catalog = {
+            {"9787111213826", "Java编程思想", "Bruce Eckel", "机械工业出版社", "计算机", 5, "A-01"},
+            {"9787115428028", "深入理解计算机系统", "Randal E. Bryant", "人民邮电出版社", "计算机", 3, "A-02"},
+            {"9787111544937", "算法导论", "Thomas H. Cormen", "机械工业出版社", "计算机", 4, "A-03"},
+            {"9787115547484", "设计模式", "Erich Gamma", "机械工业出版社", "计算机", 3, "A-04"},
+            {"9787115352118", "重构", "Martin Fowler", "人民邮电出版社", "计算机", 2, "A-05"},
+            {"9787020002207", "红楼梦", "曹雪芹", "人民文学出版社", "文学", 4, "B-01"},
+            {"9787544253994", "百年孤独", "加西亚·马尔克斯", "南海出版公司", "文学", 3, "B-02"},
+            {"9787020008735", "围城", "钱钟书", "人民文学出版社", "文学", 3, "B-03"},
+            {"9787020024759", "平凡的世界", "路遥", "人民文学出版社", "文学", 4, "B-04"},
+            {"9787101003048", "史记", "司马迁", "中华书局", "历史", 2, "C-01"},
+            {"9787101003055", "资治通鉴", "司马光", "中华书局", "历史", 2, "C-02"},
+            {"9787101003062", "中国通史", "吕思勉", "中华书局", "历史", 3, "C-03"},
+            {"9787108011381", "人类简史", "尤瓦尔·赫拉利", "中信出版社", "社科", 3, "D-01"},
+            {"9787508647357", "未来简史", "尤瓦尔·赫拉利", "中信出版社", "社科", 2, "D-02"},
+            {"9787508684031", "原则", "瑞·达利欧", "中信出版社", "社科", 2, "D-03"},
+            {"9787536692930", "三体", "刘慈欣", "重庆出版社", "科幻", 5, "E-01"},
+            {"9787536692947", "球状闪电", "刘慈欣", "重庆出版社", "科幻", 3, "E-02"},
+            {"9787532731152", "银河帝国", "阿西莫夫", "上海译文出版社", "科幻", 2, "E-03"}
+        };
+        boolean initialSetup = repository.books("书名", "").isEmpty();
+        if (initialSetup)
+            for (Object[] row : catalog) {
+                String isbn = (String) row[0];
+                if (repository.books("ISBN", isbn).isEmpty())
+                    repository.addBook(
+                            isbn,
+                            (String) row[1],
+                            (String) row[2],
+                            (String) row[3],
+                            (String) row[4],
+                            (Integer) row[5],
+                            (String) row[6]);
+            }
+
+        if (initialSetup) seedCirculationHistory();
+    }
+
+    private void ensureAccount(
+            String username, String password, String name, String phone, String email, Role role) {
+        if (repository.findAuth(username).isEmpty())
+            register(username, password, name, phone, email, role);
+    }
+
+    private void seedCirculationHistory() {
+        List<User> readers =
+                repository.users().stream().filter(u -> u.role() == Role.READER).toList();
+        List<Book> books = repository.books("书名", "");
+        if (readers.size() < 6 || books.size() < 10) return;
+
+        User r0 = readerByUsername(readers, "reader");
+        User r1 = readerByUsername(readers, "reader01");
+        User r2 = readerByUsername(readers, "reader02");
+        User r3 = readerByUsername(readers, "reader03");
+        User r4 = readerByUsername(readers, "reader04");
+        User r5 = readerByUsername(readers, "reader05");
+        User r6 = readerByUsername(readers, "reader06");
+
+        Book java = bookByIsbn(books, "9787111213826");
+        Book csapp = bookByIsbn(books, "9787115428028");
+        Book clrs = bookByIsbn(books, "9787111544937");
+        Book dream = bookByIsbn(books, "9787020002207");
+        Book solitude = bookByIsbn(books, "9787544253994");
+        Book history = bookByIsbn(books, "9787101003048");
+        Book tongjian = bookByIsbn(books, "9787101003055");
+        Book santi = bookByIsbn(books, "9787536692930");
+
+        LibraryService early = withClock("2026-01-08T09:00:00");
+        LibraryService mid = withClock("2026-02-12T10:00:00");
+        LibraryService spring = withClock("2026-03-05T11:00:00");
+        LibraryService april = withClock("2026-04-10T09:30:00");
+        LibraryService may = withClock("2026-05-15T14:00:00");
+        LibraryService june = withClock("2026-06-08T09:00:00");
+        LibraryService juneReturn = withClock("2026-06-18T16:00:00");
+        LibraryService july = withClock("2026-07-05T10:00:00");
+        LibraryService currentService = new LibraryService(repository, clock);
+
+        early.returnBook(early.borrow(r0.id(), java.id()));
+        mid.returnBook(mid.borrow(r1.id(), java.id()));
+        spring.returnBook(spring.borrow(r2.id(), csapp.id()));
+        april.returnBook(april.borrow(r0.id(), clrs.id()));
+        may.returnBook(may.borrow(r3.id(), dream.id()));
+        juneReturn.returnBook(june.borrow(r4.id(), solitude.id()));
+        juneReturn.returnBook(june.borrow(r1.id(), santi.id()));
+
+        long overdue = may.borrow(r2.id(), history.id());
+        july.returnBook(overdue);
+
+        long active1 = july.borrow(r0.id(), java.id());
+        july.renew(active1);
+        july.borrow(r1.id(), clrs.id());
+        july.borrow(r3.id(), dream.id());
+        currentService.borrow(r4.id(), santi.id());
+
+        Book scarce =
+                repository.books("ISBN", tongjian.isbn()).stream().findFirst().orElse(tongjian);
+        User[] fillers = {r0, r1};
+        for (int i = 0; i < scarce.availableCopies() && i < fillers.length; i++)
+            currentService.borrow(fillers[i].id(), scarce.id());
+        currentService.reserve(r5.id(), scarce.id());
+        currentService.reserve(r4.id(), scarce.id());
+        currentService.reserve(r6.id(), bookByIsbn(books, "9787536692947").id());
+    }
+
+    private static User readerByUsername(List<User> readers, String username) {
+        return readers.stream()
+                .filter(u -> username.equals(u.username()))
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("演示读者缺失：" + username));
+    }
+
+    private static Book bookByIsbn(List<Book> books, String isbn) {
+        return books.stream()
+                .filter(b -> isbn.equals(b.isbn()))
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("演示图书缺失：" + isbn));
+    }
+
+    private LibraryService withClock(String localDateTime) {
+        return new LibraryService(
+                repository,
+                Clock.fixed(
+                        LocalDateTime.parse(localDateTime).toInstant(ZoneOffset.ofHours(8)),
+                        ZoneId.of("Asia/Shanghai")));
     }
 
     public User login(String username, String password) {
@@ -62,6 +183,24 @@ public final class LibraryService {
         if (!PasswordHasher.verify(password, row.hash(), row.salt()))
             throw new IllegalArgumentException("用户名或密码错误");
         return row.user();
+    }
+
+    public void changePassword(
+            long userId, String currentPassword, String newPassword, String confirmation) {
+        if (currentPassword == null || currentPassword.isBlank())
+            throw new IllegalArgumentException("请输入当前密码");
+        if (newPassword == null || newPassword.length() < 6)
+            throw new IllegalArgumentException("新密码不能少于6位");
+        if (!newPassword.equals(confirmation)) throw new IllegalArgumentException("两次输入的新密码不一致");
+        if (newPassword.equals(currentPassword)) throw new IllegalArgumentException("新密码不能与当前密码相同");
+        var row =
+                repository
+                        .findAuth(userId)
+                        .orElseThrow(() -> new IllegalArgumentException("用户不存在"));
+        if (!PasswordHasher.verify(currentPassword, row.hash(), row.salt()))
+            throw new IllegalArgumentException("当前密码错误");
+        var credentials = PasswordHasher.hash(newPassword);
+        repository.updatePassword(userId, credentials.hash(), credentials.salt());
     }
 
     public User register(
@@ -396,7 +535,13 @@ public final class LibraryService {
     }
 
     public Dashboard dashboard() {
-        return repository.dashboard();
+        expireReservations();
+        return repository.dashboard(null);
+    }
+
+    public Dashboard dashboard(Long userId) {
+        expireReservations();
+        return repository.dashboard(userId);
     }
 
     public List<Ranking> rankings() {
@@ -404,7 +549,19 @@ public final class LibraryService {
     }
 
     public List<MonthlyStat> monthlyStats() {
-        return repository.monthlyLoanCounts(12);
+        YearMonth current = YearMonth.from(LocalDateTime.now(clock));
+        YearMonth first = current.minusMonths(11);
+        Map<String, Long> counts =
+                repository.monthlyLoanCounts(first.atDay(1).atStartOfDay()).stream()
+                        .collect(
+                                java.util.stream.Collectors.toMap(
+                                        MonthlyStat::month, MonthlyStat::borrowCount));
+        List<MonthlyStat> rows = new ArrayList<>();
+        for (int i = 0; i < 12; i++) {
+            String month = first.plusMonths(i).toString();
+            rows.add(new MonthlyStat(month, counts.getOrDefault(month, 0L)));
+        }
+        return rows;
     }
 
     public List<CategoryStock> categoryStocks() {
@@ -413,6 +570,29 @@ public final class LibraryService {
 
     public List<String> categories() {
         return repository.categories();
+    }
+
+    public void addCategory(String name) {
+        String category = required(name, "分类名称");
+        if (repository.categories().contains(category)) throw new IllegalArgumentException("分类名称已存在");
+        repository.addCategory(category);
+    }
+
+    public void renameCategory(String currentName, String newName) {
+        String current = required(currentName, "原分类名称");
+        String target = required(newName, "新分类名称");
+        List<String> categories = repository.categories();
+        if (!categories.contains(current)) throw new IllegalArgumentException("原分类不存在");
+        if (current.equals(target)) throw new IllegalArgumentException("分类名称未发生变化");
+        if (categories.contains(target)) throw new IllegalArgumentException("分类名称已存在");
+        repository.renameCategory(current, target);
+    }
+
+    public void deleteCategory(String name) {
+        String category = required(name, "分类名称");
+        if (!repository.categories().contains(category)) throw new IllegalArgumentException("分类不存在");
+        if (repository.categoryInUse(category)) throw new IllegalArgumentException("该分类仍有图书，不能删除");
+        repository.deleteCategory(category);
     }
 
     public void deleteBook(long id) {

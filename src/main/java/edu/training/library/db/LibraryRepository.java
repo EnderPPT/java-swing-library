@@ -28,6 +28,24 @@ public final class LibraryRepository {
         }
     }
 
+    public Optional<AuthRow> findAuth(long userId) {
+        String sql =
+                "SELECT id, username, password_hash, password_salt, full_name, phone, email, role, card_status FROM users WHERE id=?";
+        try (Connection c = database.connect();
+                PreparedStatement p = c.prepareStatement(sql)) {
+            p.setLong(1, userId);
+            try (ResultSet r = p.executeQuery()) {
+                return r.next() ? Optional.of(auth(r)) : Optional.empty();
+            }
+        } catch (SQLException e) {
+            throw failure(e);
+        }
+    }
+
+    public void updatePassword(long userId, String hash, String salt) {
+        execute("UPDATE users SET password_hash=?,password_salt=? WHERE id=?", hash, salt, userId);
+    }
+
     public User createUser(
             String username,
             String hash,
@@ -93,6 +111,31 @@ public final class LibraryRepository {
 
     public void addCategory(String name) {
         execute("INSERT INTO categories(name) VALUES(?)", name);
+    }
+
+    public void renameCategory(String currentName, String newName) {
+        execute("UPDATE categories SET name=? WHERE name=?", newName, currentName);
+    }
+
+    public void deleteCategory(String name) {
+        execute(
+                "DELETE FROM categories WHERE name=? AND NOT EXISTS (SELECT 1 FROM books b WHERE b.category_id=categories.id)",
+                name);
+    }
+
+    public boolean categoryInUse(String name) {
+        String sql =
+                "SELECT EXISTS(SELECT 1 FROM books b JOIN categories c ON c.id=b.category_id WHERE c.name=?)";
+        try (Connection c = database.connect();
+                PreparedStatement p = c.prepareStatement(sql)) {
+            p.setString(1, name);
+            try (ResultSet r = p.executeQuery()) {
+                r.next();
+                return r.getBoolean(1);
+            }
+        } catch (SQLException e) {
+            throw failure(e);
+        }
     }
 
     public List<Book> books(String field, String keyword) {
@@ -251,20 +294,38 @@ public final class LibraryRepository {
         }
     }
 
-    public Dashboard dashboard() {
+    public Dashboard dashboard(Long userId) {
+        String userFilter = userId == null ? "" : " AND user_id=?";
         String sql =
-                "SELECT (SELECT COUNT(*) FROM books),(SELECT COALESCE(SUM(total_copies),0) FROM books),(SELECT COALESCE(SUM(available_copies),0) FROM books),(SELECT COUNT(*) FROM loans WHERE status='BORROWED'),(SELECT COUNT(*) FROM reservations WHERE status IN ('WAITING','READY')),(SELECT COALESCE(SUM(amount),0) FROM fines WHERE status='UNPAID')";
+                "SELECT (SELECT COUNT(*) FROM books),"
+                        + "(SELECT COALESCE(SUM(total_copies),0) FROM books),"
+                        + "(SELECT COALESCE(SUM(available_copies),0) FROM books),"
+                        + "(SELECT COUNT(*) FROM loans WHERE status='BORROWED'"
+                        + userFilter
+                        + "),"
+                        + "(SELECT COUNT(*) FROM reservations WHERE status IN ('WAITING','READY')"
+                        + userFilter
+                        + "),"
+                        + "(SELECT COALESCE(SUM(amount),0) FROM fines WHERE status='UNPAID'"
+                        + userFilter
+                        + ")";
         try (Connection c = database.connect();
-                PreparedStatement p = c.prepareStatement(sql);
-                ResultSet r = p.executeQuery()) {
-            r.next();
-            return new Dashboard(
-                    r.getLong(1),
-                    r.getLong(2),
-                    r.getLong(3),
-                    r.getLong(4),
-                    r.getLong(5),
-                    r.getBigDecimal(6));
+                PreparedStatement p = c.prepareStatement(sql)) {
+            if (userId != null) {
+                p.setLong(1, userId);
+                p.setLong(2, userId);
+                p.setLong(3, userId);
+            }
+            try (ResultSet r = p.executeQuery()) {
+                r.next();
+                return new Dashboard(
+                        r.getLong(1),
+                        r.getLong(2),
+                        r.getLong(3),
+                        r.getLong(4),
+                        r.getLong(5),
+                        r.getBigDecimal(6));
+            }
         } catch (SQLException e) {
             throw failure(e);
         }
@@ -284,16 +345,16 @@ public final class LibraryRepository {
         }
     }
 
-    public List<MonthlyStat> monthlyLoanCounts(int months) {
+    public List<MonthlyStat> monthlyLoanCounts(LocalDateTime start) {
         String sql =
-                "SELECT DATE_FORMAT(borrowed_at,'%Y-%m') ym,COUNT(*) FROM loans GROUP BY ym ORDER BY ym DESC LIMIT ?";
+                "SELECT DATE_FORMAT(borrowed_at,'%Y-%m') ym,COUNT(*) FROM loans "
+                        + "WHERE borrowed_at>=? GROUP BY ym ORDER BY ym";
         try (Connection c = database.connect();
                 PreparedStatement p = c.prepareStatement(sql)) {
-            p.setInt(1, months);
+            p.setTimestamp(1, Timestamp.valueOf(start));
             try (ResultSet r = p.executeQuery()) {
                 List<MonthlyStat> rows = new ArrayList<>();
                 while (r.next()) rows.add(new MonthlyStat(r.getString(1), r.getLong(2)));
-                java.util.Collections.reverse(rows);
                 return rows;
             }
         } catch (SQLException e) {

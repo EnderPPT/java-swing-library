@@ -25,7 +25,6 @@ public final class Ui {
     public static final Color ERROR = new Color(186, 26, 26);
     public static final Color SUCCESS = new Color(45, 100, 78);
 
-    // Compatibility aliases used by the existing screens while they are migrated.
     static final Color PRIMARY = INK;
     static final Color SURFACE = BACKGROUND;
 
@@ -399,7 +398,6 @@ public final class Ui {
         @Override
         protected void paintComponent(Graphics graphics) {
             super.paintComponent(graphics);
-            // 只围着文字画标签框，避免边框撑满整个 44px 高的单元格
             String text = getText();
             if (text != null && !text.isBlank() && !"—".equals(text) && !"-".equals(text)) {
                 FontMetrics metrics = getFontMetrics(getFont());

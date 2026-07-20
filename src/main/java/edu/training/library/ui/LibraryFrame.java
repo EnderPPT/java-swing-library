@@ -47,7 +47,8 @@ public final class LibraryFrame extends JFrame {
     private JLabel dashboardMeta;
     private DefaultTableModel rankingModel;
     private RankingChart statisticsChart;
-    private final RankingChart monthlyChart = new RankingChart();
+    private final RankingChart monthlyChart =
+            new RankingChart("月借阅统计图", "月借阅统计", "暂无月借阅数据");
     private DefaultTableModel categoryModel;
 
     public LibraryFrame(LibraryService service, User user) {
@@ -72,6 +73,7 @@ public final class LibraryFrame extends JFrame {
         root.add(workspace, BorderLayout.CENTER);
         setContentPane(root);
         refreshAll();
+        SwingUtilities.invokeLater(this::showReadyReservationNotice);
     }
 
     private Map<String, JPanel> buildPages() {
@@ -88,7 +90,6 @@ public final class LibraryFrame extends JFrame {
 
     private JPanel header() {
         JPanel panel = new JPanel(new BorderLayout(18, 0));
-        // 不透明面板不能用半透明色，否则会留下重绘残影
         panel.setBackground(new Color(255, 253, 249));
         panel.setBorder(
                 BorderFactory.createCompoundBorder(
@@ -106,7 +107,9 @@ public final class LibraryFrame extends JFrame {
         accountLabel.setForeground(Ui.MUTED);
         JButton profile = Ui.secondary("个人资料");
         profile.addActionListener(e -> editProfile());
-        JPanel right = Ui.toolbar(accountLabel, profile);
+        JButton password = Ui.secondary("修改密码");
+        password.addActionListener(e -> changePassword());
+        JPanel right = Ui.toolbar(accountLabel, profile, password);
         panel.add(centered(right), BorderLayout.EAST);
         return panel;
     }
@@ -180,6 +183,7 @@ public final class LibraryFrame extends JFrame {
     }
 
     private void logout() {
+        if (!Ui.confirm(this, "确认退出当前账号？")) return;
         dispose();
         new LoginFrame(service).setVisible(true);
     }
@@ -255,24 +259,41 @@ public final class LibraryFrame extends JFrame {
     }
 
     private void refreshDashboard() {
-        Dashboard d = service.dashboard();
+        Long readerId = current.role() == Role.READER ? current.id() : null;
+        Dashboard d = service.dashboard(readerId);
         dashboardMetrics.removeAll();
         dashboardMetrics.add(metric("馆藏总量", d.totalCopies() + " 册", Ui.OUTLINE));
         dashboardMetrics.add(metric("当前可借", d.availableCopies() + " 册", Ui.SUCCESS));
-        dashboardMetrics.add(metric("在借记录", d.activeLoans() + " 条", Ui.INK));
-        dashboardMetrics.add(metric("有效预约", d.waitingReservations() + " 条", Ui.ACCENT));
+        dashboardMetrics.add(
+                metric(
+                        current.role() == Role.READER ? "我的在借" : "在借记录",
+                        d.activeLoans() + " 条",
+                        Ui.INK));
+        dashboardMetrics.add(
+                metric(
+                        current.role() == Role.READER ? "我的预约" : "有效预约",
+                        d.waitingReservations() + " 条",
+                        Ui.ACCENT));
         List<Ranking> rankings = service.rankings();
         dashboardRanking.setRows(rankings);
-        dashboardMeta.setText("图书品种 " + d.bookKinds() + " · 待缴 ¥" + d.unpaidFines());
-        List<Loan> recent =
-                service.loans(current.role() == Role.READER ? current.id() : null, false).stream()
-                        .limit(6)
-                        .toList();
+        if (current.role() == Role.READER) {
+            long ready =
+                    service.reservations(current.id()).stream()
+                            .filter(r -> "READY".equals(r.status()))
+                            .count();
+            dashboardMeta.setText(
+                    ready > 0
+                            ? "有 " + ready + " 本预约图书待取 · 待缴 ¥" + d.unpaidFines()
+                            : "我的待缴 ¥" + d.unpaidFines());
+        } else {
+            dashboardMeta.setText("图书品种 " + d.bookKinds() + " · 待缴 ¥" + d.unpaidFines());
+        }
+        List<Loan> recent = service.loans(readerId, false).stream().limit(6).toList();
         recentLoanModel.setRowCount(0);
         for (Loan loan : recent) {
             recentLoanModel.addRow(
                     new Object[] {
-                        loan.readerName() + " · " + loan.bookTitle(), status(loan.status())
+                        loan.readerName() + " · " + loan.bookTitle(), loanStatus(loan)
                     });
         }
         if (recent.isEmpty()) recentLoanModel.addRow(new Object[] {"暂无借阅记录", "—"});
@@ -306,6 +327,7 @@ public final class LibraryFrame extends JFrame {
         Ui.styleField(keyword);
         JButton search = Ui.primary("查询");
         search.addActionListener(e -> refreshBooks());
+        keyword.addActionListener(e -> refreshBooks());
         JPanel top = new JPanel(new BorderLayout(18, 0));
         top.setOpaque(false);
         JPanel title = new JPanel();
@@ -331,6 +353,8 @@ public final class LibraryFrame extends JFrame {
             commands.add(reserve);
         }
         if (current.role() == Role.ADMIN) {
+            JButton category = Ui.secondary("分类管理");
+            category.addActionListener(e -> manageCategories());
             JButton add = Ui.secondary("新增");
             add.addActionListener(e -> editBook(null));
             JButton edit = Ui.secondary("修改");
@@ -342,6 +366,7 @@ public final class LibraryFrame extends JFrame {
                     });
             JButton delete = Ui.danger("删除");
             delete.addActionListener(e -> deleteBook());
+            commands.add(category);
             commands.add(add);
             commands.add(edit);
             commands.add(delete);
@@ -362,6 +387,84 @@ public final class LibraryFrame extends JFrame {
         bookTable = h[0];
         refreshers.add(this::refreshBooks);
         return p;
+    }
+
+    private void manageCategories() {
+        DefaultListModel<String> model = new DefaultListModel<>();
+        service.categories().forEach(model::addElement);
+        JList<String> list = new JList<>(model);
+        list.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        list.setVisibleRowCount(10);
+        list.setFont(Ui.bodyFont(Font.PLAIN, 14f));
+        JScrollPane scroll = new JScrollPane(list);
+        scroll.setPreferredSize(new Dimension(280, 250));
+
+        JButton add = Ui.secondary("新增");
+        JButton rename = Ui.secondary("重命名");
+        JButton delete = Ui.danger("删除");
+        JPanel content = new JPanel(new BorderLayout(0, 10));
+        content.add(scroll, BorderLayout.CENTER);
+        content.add(Ui.toolbar(add, rename, delete), BorderLayout.SOUTH);
+
+        add.addActionListener(
+                e -> {
+                    String name = JOptionPane.showInputDialog(this, "请输入分类名称", "新增分类", JOptionPane.PLAIN_MESSAGE);
+                    if (name == null) return;
+                    try {
+                        service.addCategory(name);
+                        reloadCategories(model);
+                    } catch (Exception exception) {
+                        Ui.error(this, exception);
+                    }
+                });
+        rename.addActionListener(
+                e -> {
+                    String selected = list.getSelectedValue();
+                    if (selected == null) {
+                        Ui.info(this, "请先选择分类");
+                        return;
+                    }
+                    String name =
+                            (String)
+                                    JOptionPane.showInputDialog(
+                                            this,
+                                            "请输入新的分类名称",
+                                            "重命名分类",
+                                            JOptionPane.PLAIN_MESSAGE,
+                                            null,
+                                            null,
+                                            selected);
+                    if (name == null) return;
+                    try {
+                        service.renameCategory(selected, name);
+                        reloadCategories(model);
+                        refreshAll();
+                    } catch (Exception exception) {
+                        Ui.error(this, exception);
+                    }
+                });
+        delete.addActionListener(
+                e -> {
+                    String selected = list.getSelectedValue();
+                    if (selected == null) {
+                        Ui.info(this, "请先选择分类");
+                        return;
+                    }
+                    if (!Ui.confirm(this, "确认删除分类“" + selected + "”？")) return;
+                    try {
+                        service.deleteCategory(selected);
+                        reloadCategories(model);
+                    } catch (Exception exception) {
+                        Ui.error(this, exception);
+                    }
+                });
+
+        JOptionPane.showMessageDialog(this, content, "分类管理", JOptionPane.PLAIN_MESSAGE);
+    }
+
+    private void reloadCategories(DefaultListModel<String> model) {
+        model.clear();
+        service.categories().forEach(model::addElement);
     }
 
     private void refreshBooks() {
@@ -392,7 +495,16 @@ public final class LibraryFrame extends JFrame {
         User reader = current;
         if (current.role() == Role.ADMIN) {
             List<User> readers =
-                    service.users().stream().filter(u -> u.role() == Role.READER).toList();
+                    service.users().stream()
+                            .filter(
+                                    u ->
+                                            u.role() == Role.READER
+                                                    && "ACTIVE".equals(u.cardStatus()))
+                            .toList();
+            if (readers.isEmpty()) {
+                Ui.info(this, "暂无可办理借阅的读者");
+                return;
+            }
             JComboBox<User> box = new JComboBox<>(readers.toArray(User[]::new));
             if (JOptionPane.showConfirmDialog(this, box, "选择借阅人", JOptionPane.OK_CANCEL_OPTION)
                     != JOptionPane.OK_OPTION) return;
@@ -504,7 +616,7 @@ public final class LibraryFrame extends JFrame {
         refresh.addActionListener(e -> refreshLoans());
         top.add(Ui.toolbar(renew, giveBack, refresh), BorderLayout.EAST);
         p.add(top, BorderLayout.NORTH);
-        loanModel = Ui.model("记录号", "读者", "书名", "借出时间", "应还时间", "归还时间", "续借", "状态");
+        loanModel = Ui.model("记录号", "读者", "书名", "状态", "借出时间", "应还时间", "归还时间", "续借");
         JTable[] h = new JTable[1];
         p.add(Ui.table(loanModel, h), BorderLayout.CENTER);
         loanTable = h[0];
@@ -521,11 +633,11 @@ public final class LibraryFrame extends JFrame {
                         l.id(),
                         l.readerName(),
                         l.bookTitle(),
+                        loanStatus(l),
                         fmt(l.borrowedAt()),
                         fmt(l.dueAt()),
                         fmt(l.returnedAt()),
-                        l.renewCount(),
-                        status(l.status())
+                        l.renewCount()
                     });
     }
 
@@ -535,8 +647,17 @@ public final class LibraryFrame extends JFrame {
             Ui.info(this, "请先选择借阅记录");
             return;
         }
+        Loan loan = loanRows.get(i);
+        if (!"BORROWED".equals(loan.status())) {
+            Ui.info(this, "已归还的图书不能续借");
+            return;
+        }
+        if (loan.renewCount() >= 1) {
+            Ui.info(this, "该记录已续借过一次");
+            return;
+        }
         try {
-            service.renew(loanRows.get(i).id());
+            service.renew(loan.id());
             Ui.info(this, "续借成功，应还日期顺延14天");
             refreshAll();
         } catch (Exception e) {
@@ -550,8 +671,14 @@ public final class LibraryFrame extends JFrame {
             Ui.info(this, "请先选择借阅记录");
             return;
         }
+        Loan loan = loanRows.get(i);
+        if (!"BORROWED".equals(loan.status())) {
+            Ui.info(this, "该记录已归还，无需重复操作");
+            return;
+        }
+        if (!Ui.confirm(this, "确认归还《" + loan.bookTitle() + "》？")) return;
         try {
-            service.returnBook(loanRows.get(i).id());
+            service.returnBook(loan.id());
             Ui.info(this, "归还成功，逾期费用已自动结算");
             refreshAll();
         } catch (Exception e) {
@@ -608,8 +735,15 @@ public final class LibraryFrame extends JFrame {
             Ui.info(this, "请先选择预约记录");
             return;
         }
+        Reservation reservation = reservationRows.get(i);
+        if (!"WAITING".equals(reservation.status()) && !"READY".equals(reservation.status())) {
+            Ui.info(this, "该预约已结束，无需取消");
+            return;
+        }
+        if (!Ui.confirm(this, "确认取消对《" + reservation.bookTitle() + "》的预约？")) return;
         try {
-            service.cancelReservation(reservationRows.get(i).id(), current.id());
+            service.cancelReservation(reservation.id(), current.id());
+            Ui.info(this, "预约已取消");
             refreshAll();
         } catch (Exception e) {
             Ui.error(this, e);
@@ -666,9 +800,14 @@ public final class LibraryFrame extends JFrame {
             return;
         }
         Fine f = fineRows.get(i);
+        if (!"UNPAID".equals(f.status())) {
+            Ui.info(this, "该罚款已缴清，无需重复确认");
+            return;
+        }
         if (Ui.confirm(this, "确认已缴纳 ¥ " + f.amount() + "？"))
             try {
                 service.payFine(f.id(), current.id());
+                Ui.info(this, "缴费状态已更新");
                 refreshAll();
             } catch (Exception e) {
                 Ui.error(this, e);
@@ -750,6 +889,8 @@ public final class LibraryFrame extends JFrame {
             Ui.info(this, "管理员没有借阅证状态");
             return;
         }
+        String next = "ACTIVE".equals(u.cardStatus()) ? "停用" : "启用";
+        if (!Ui.confirm(this, "确认" + next + "读者“" + u.fullName() + "”的借阅证？")) return;
         try {
             service.updateCard(u.id(), "ACTIVE".equals(u.cardStatus()) ? "SUSPENDED" : "ACTIVE");
             refreshAll();
@@ -805,9 +946,13 @@ public final class LibraryFrame extends JFrame {
             Ranking r = rows.get(i);
             rankingModel.addRow(new Object[] {i + 1, r.title(), r.author(), r.borrowCount()});
         }
+        List<MonthlyStat> monthly = service.monthlyStats();
         monthlyChart.setRows(
-                service.monthlyStats().stream()
-                        .map(m -> new Ranking(m.month(), "", m.borrowCount()))
+                monthly.subList(Math.max(0, monthly.size() - 7), monthly.size()).stream()
+                        .map(
+                                m ->
+                                        new Ranking(
+                                                m.month().substring(5) + "月", "", m.borrowCount()))
                         .toList());
         categoryModel.setRowCount(0);
         for (CategoryStock s : service.categoryStocks())
@@ -834,6 +979,8 @@ public final class LibraryFrame extends JFrame {
         java.io.File file = chooser.getSelectedFile();
         if (!file.getName().toLowerCase(java.util.Locale.ROOT).endsWith(".xlsx"))
             file = new java.io.File(file.getParentFile(), file.getName() + ".xlsx");
+        if (file.exists()
+                && !Ui.confirm(this, "文件“" + file.getName() + "”已存在，确认覆盖？")) return;
         try {
             StatisticsExport.write(
                     file.toPath(),
@@ -842,6 +989,51 @@ public final class LibraryFrame extends JFrame {
                     service.monthlyStats(),
                     service.categoryStocks());
             Ui.info(this, "报表已导出到 " + file.getAbsolutePath());
+        } catch (Exception e) {
+            Ui.error(this, e);
+        }
+    }
+
+    private void changePassword() {
+        JPasswordField currentPassword = new JPasswordField();
+        JPasswordField newPassword = new JPasswordField();
+        JPasswordField confirmation = new JPasswordField();
+        JComponent[] fields = {currentPassword, newPassword, confirmation};
+        if (JOptionPane.showConfirmDialog(
+                        this,
+                        Ui.form(new String[] {"当前密码*", "新密码*", "确认新密码*"}, fields),
+                        "修改密码",
+                        JOptionPane.OK_CANCEL_OPTION,
+                        JOptionPane.PLAIN_MESSAGE)
+                != JOptionPane.OK_OPTION) return;
+        try {
+            service.changePassword(
+                    current.id(),
+                    new String(currentPassword.getPassword()),
+                    new String(newPassword.getPassword()),
+                    new String(confirmation.getPassword()));
+            Ui.info(this, "密码已修改，下次登录请使用新密码");
+        } catch (Exception e) {
+            Ui.error(this, e);
+        }
+    }
+
+    private void showReadyReservationNotice() {
+        if (current.role() != Role.READER || !isDisplayable()) return;
+        try {
+            List<Reservation> ready =
+                    service.reservations(current.id()).stream()
+                            .filter(r -> "READY".equals(r.status()))
+                            .toList();
+            if (ready.isEmpty()) return;
+            StringBuilder message = new StringBuilder("以下预约图书已到馆，请在保留期内取书：\n\n");
+            for (Reservation reservation : ready)
+                message.append("《")
+                        .append(reservation.bookTitle())
+                        .append("》  保留至 ")
+                        .append(fmt(reservation.expiresAt()))
+                        .append('\n');
+            Ui.info(this, message.toString());
         } catch (Exception e) {
             Ui.error(this, e);
         }
@@ -889,6 +1081,13 @@ public final class LibraryFrame extends JFrame {
 
     private static String fmt(java.time.LocalDateTime t) {
         return t == null ? "-" : TIME.format(t);
+    }
+
+    private static String loanStatus(Loan loan) {
+        if ("BORROWED".equals(loan.status())
+                && loan.dueAt() != null
+                && loan.dueAt().isBefore(java.time.LocalDateTime.now())) return "已逾期";
+        return status(loan.status());
     }
 
     private static String status(String s) {

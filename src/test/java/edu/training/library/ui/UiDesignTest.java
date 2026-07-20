@@ -74,7 +74,16 @@ class UiDesignTest {
         RankingChart chart = new RankingChart();
         chart.setRows(List.of(new Ranking("Java 编程思想", "Bruce Eckel", 0)));
 
-        assertEquals("热门图书排行，暂无借阅数据", chart.getAccessibleContext().getAccessibleDescription());
+        assertEquals("热门图书排行，暂无数据", chart.getAccessibleContext().getAccessibleDescription());
+    }
+
+    @Test
+    void monthlyChartUsesItsOwnAccessibleDescription() {
+        RankingChart chart = new RankingChart("月借阅统计图", "月借阅统计", "暂无月借阅数据");
+        chart.setRows(List.of(new Ranking("07月", "", 6)));
+
+        assertEquals("月借阅统计图", chart.getAccessibleContext().getAccessibleName());
+        assertEquals("月借阅统计，共 1 项", chart.getAccessibleContext().getAccessibleDescription());
     }
 
     @Test

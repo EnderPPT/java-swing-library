@@ -7,12 +7,20 @@ import javax.accessibility.AccessibleContext;
 import javax.swing.JComponent;
 
 final class RankingChart extends JComponent {
+    private final String chartName;
+    private final String emptyMessage;
     private List<Ranking> rows = List.of();
 
     RankingChart() {
+        this("热门图书借阅排行图", "热门图书排行", "暂无借阅排行");
+    }
+
+    RankingChart(String accessibleName, String chartName, String emptyMessage) {
+        this.chartName = chartName;
+        this.emptyMessage = emptyMessage;
         setOpaque(false);
         setPreferredSize(new Dimension(480, 280));
-        getAccessibleContext().setAccessibleName("热门图书借阅排行图");
+        getAccessibleContext().setAccessibleName(accessibleName);
         updateAccessibleDescription();
     }
 
@@ -25,8 +33,8 @@ final class RankingChart extends JComponent {
     private void updateAccessibleDescription() {
         String description =
                 rows.stream().anyMatch(row -> row.borrowCount() > 0)
-                        ? "热门图书排行，共 " + rows.size() + " 项"
-                        : "热门图书排行，暂无借阅数据";
+                        ? chartName + "，共 " + rows.size() + " 项"
+                        : chartName + "，暂无数据";
         getAccessibleContext().setAccessibleDescription(description);
     }
 
@@ -51,7 +59,7 @@ final class RankingChart extends JComponent {
         if (rows.isEmpty()) {
             copy.setColor(Ui.MUTED);
             copy.setFont(Ui.bodyFont(Font.PLAIN, 13f));
-            copy.drawString("暂无借阅排行", left + 12, top + height / 2);
+            copy.drawString(emptyMessage, left + 12, top + height / 2);
             copy.dispose();
             return;
         }
@@ -60,13 +68,12 @@ final class RankingChart extends JComponent {
         if (maximum <= 0) {
             copy.setColor(Ui.MUTED);
             copy.setFont(Ui.bodyFont(Font.PLAIN, 13f));
-            copy.drawString("暂无借阅数据，完成借阅后生成排行", left + 12, top + height / 2);
+            copy.drawString(emptyMessage, left + 12, top + height / 2);
             copy.dispose();
             return;
         }
         int slot = Math.max(1, width / rows.size());
         int barWidth = Math.max(18, Math.min(52, slot - 16));
-        // 柱高按 height-18 缩放，给最高柱的数值标签留出空间
         int barSpace = Math.max(1, height - 18);
         for (int index = 0; index < rows.size(); index++) {
             Ranking ranking = rows.get(index);
