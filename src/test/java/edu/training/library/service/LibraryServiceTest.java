@@ -10,6 +10,8 @@ import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.Statement;
 import java.time.*;
+import java.util.ArrayList;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -243,6 +245,154 @@ class LibraryServiceTest {
         assertThrows(
                 IllegalArgumentException.class,
                 () -> service.borrow(reader.id(), singleCopyBook.id()));
+    }
+
+    @Test
+    void concurrentBorrowDoesNotOversellSingleCopy() throws Exception {
+        int threads = 8;
+        java.util.concurrent.ExecutorService pool =
+                java.util.concurrent.Executors.newFixedThreadPool(threads);
+        java.util.concurrent.CountDownLatch start = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.atomic.AtomicInteger success =
+                new java.util.concurrent.atomic.AtomicInteger();
+        java.util.concurrent.atomic.AtomicInteger rejected =
+                new java.util.concurrent.atomic.AtomicInteger();
+        List<User> contenders = new ArrayList<>();
+        contenders.add(reader);
+        contenders.add(reader2);
+        for (int i = 3; i <= threads; i++)
+            contenders.add(
+                    service.register(
+                            "race" + i,
+                            "reader123",
+                            "并发读者" + i,
+                            "13800138" + String.format("%03d", i),
+                            "race" + i + "@test.cn",
+                            Role.READER));
+
+        List<java.util.concurrent.Future<?>> futures = new ArrayList<>();
+        for (User contender : contenders) {
+            futures.add(
+                    pool.submit(
+                            () -> {
+                                try {
+                                    start.await();
+                                    service.borrow(contender.id(), singleCopyBook.id());
+                                    success.incrementAndGet();
+                                } catch (IllegalArgumentException e) {
+                                    rejected.incrementAndGet();
+                                } catch (InterruptedException e) {
+                                    Thread.currentThread().interrupt();
+                                }
+                            }));
+        }
+        start.countDown();
+        for (java.util.concurrent.Future<?> future : futures) future.get();
+        pool.shutdown();
+        assertTrue(pool.awaitTermination(10, java.util.concurrent.TimeUnit.SECONDS));
+
+        assertEquals(1, success.get(), "单册图书并发借阅只能成功一次");
+        assertEquals(threads - 1, rejected.get());
+        assertEquals(0, service.books("书名", "测试图书").getFirst().availableCopies());
+        assertEquals(1, service.loans(null, true).size());
+    }
+
+    @Test
+    void monthlyStatsAndCategoryStocksAreAvailable() {
+        service.borrow(reader.id(), singleCopyBook.id());
+        assertEquals(12, service.monthlyStats().size());
+        assertEquals("2025-08", service.monthlyStats().getFirst().month());
+        assertEquals("2026-07", service.monthlyStats().getLast().month());
+        assertEquals(1, service.monthlyStats().getLast().borrowCount());
+        assertFalse(service.categoryStocks().isEmpty());
+        assertTrue(
+                service.categoryStocks().stream()
+                        .anyMatch(s -> "计算机".equals(s.category()) && s.totalCopies() >= 1));
+    }
+
+    @Test
+    void userCanChangePassword() {
+        service.changePassword(reader.id(), "reader123", "newPassword123", "newPassword123");
+
+        assertThrows(
+                IllegalArgumentException.class, () -> service.login("reader01", "reader123"));
+        assertEquals(reader.id(), service.login("reader01", "newPassword123").id());
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        service.changePassword(
+                                reader.id(), "wrong", "anotherPassword", "anotherPassword"));
+    }
+
+    @Test
+    void readerDashboardOnlyCountsOwnBusinessData() {
+        service.borrow(reader.id(), singleCopyBook.id());
+        service.addBook("9780000000002", "第二本图书", "作者", "出版社", "计算机", 1, "T-02");
+        Book second = service.books("书名", "第二本图书").getFirst();
+        service.borrow(reader2.id(), second.id());
+
+        Dashboard readerView = service.dashboard(reader.id());
+        Dashboard reader2View = service.dashboard(reader2.id());
+        Dashboard administratorView = service.dashboard();
+
+        assertEquals(1, readerView.activeLoans());
+        assertEquals(1, reader2View.activeLoans());
+        assertEquals(2, administratorView.activeLoans());
+        assertEquals(administratorView.totalCopies(), readerView.totalCopies());
+        assertEquals(administratorView.availableCopies(), readerView.availableCopies());
+    }
+
+    @Test
+    void categoryManagementProtectsCategoriesInUse() {
+        service.addCategory("临时分类");
+        assertTrue(service.categories().contains("临时分类"));
+
+        service.renameCategory("临时分类", "新分类");
+        assertFalse(service.categories().contains("临时分类"));
+        assertTrue(service.categories().contains("新分类"));
+
+        service.deleteCategory("新分类");
+        assertFalse(service.categories().contains("新分类"));
+        assertThrows(IllegalArgumentException.class, () -> service.deleteCategory("新分类"));
+        assertThrows(IllegalArgumentException.class, () -> service.addCategory("计算机"));
+        assertThrows(IllegalArgumentException.class, () -> service.deleteCategory("计算机"));
+    }
+
+    @Test
+    void demoDataIsNotInjectedIntoExistingBusinessDatabase() {
+        int users = service.users().size();
+        int books = service.books("书名", "").size();
+
+        service.seedDemoData();
+
+        assertEquals(users, service.users().size());
+        assertEquals(books, service.books("书名", "").size());
+        assertTrue(service.users().stream().noneMatch(u -> "admin".equals(u.username())));
+    }
+
+    @Test
+    void demoDataSeedingIsCompleteAndIdempotent() throws Exception {
+        clearTestData();
+        repository = new LibraryRepository(database);
+        service = new LibraryService(repository, at("2026-07-20T09:00:00"));
+
+        service.seedDemoData();
+        Dashboard first = service.dashboard();
+        int users = service.users().size();
+        int loans = service.loans(null, false).size();
+        int reservations = service.reservations(null).size();
+
+        service.seedDemoData();
+        Dashboard second = service.dashboard();
+
+        assertEquals(first, second);
+        assertEquals(users, service.users().size());
+        assertEquals(loans, service.loans(null, false).size());
+        assertEquals(reservations, service.reservations(null).size());
+        assertTrue(first.bookKinds() >= 18);
+        assertTrue(first.activeLoans() >= 6);
+        assertTrue(first.waitingReservations() >= 2);
+        assertFalse(service.monthlyStats().isEmpty());
     }
 
     private static Clock at(String localDateTime) {

@@ -88,7 +88,6 @@ public final class Database {
             try (Statement statement = connection.createStatement()) {
                 statement.execute("CREATE INDEX " + index + " ON " + table + "(" + columns + ")");
             } catch (SQLException e) {
-                // Another process may have created the same index after the metadata check.
                 String message = String.valueOf(e.getMessage()).toLowerCase();
                 if (!message.contains("already exists") && !message.contains("duplicate")) throw e;
             }
