@@ -574,7 +574,8 @@ public final class LibraryService {
 
     public void addCategory(String name) {
         String category = required(name, "分类名称");
-        if (repository.categories().contains(category)) throw new IllegalArgumentException("分类名称已存在");
+        if (repository.categories().contains(category))
+            throw new IllegalArgumentException("分类名称已存在");
         repository.addCategory(category);
     }
 
@@ -590,7 +591,8 @@ public final class LibraryService {
 
     public void deleteCategory(String name) {
         String category = required(name, "分类名称");
-        if (!repository.categories().contains(category)) throw new IllegalArgumentException("分类不存在");
+        if (!repository.categories().contains(category))
+            throw new IllegalArgumentException("分类不存在");
         if (repository.categoryInUse(category)) throw new IllegalArgumentException("该分类仍有图书，不能删除");
         repository.deleteCategory(category);
     }
