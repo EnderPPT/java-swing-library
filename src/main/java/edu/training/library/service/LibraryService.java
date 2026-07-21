@@ -132,18 +132,19 @@ public final class LibraryService {
         juneReturn.returnBook(june.borrow(r4.id(), solitude.id()));
         juneReturn.returnBook(june.borrow(r1.id(), santi.id()));
 
-        long overdue = may.borrow(r2.id(), history.id());
-        july.returnBook(overdue);
-
+        // 默认演示读者 reader：先完成其后续在借，再逾期归还，留下未缴罚款便于演示
+        long overdue = may.borrow(r0.id(), history.id());
         long active1 = july.borrow(r0.id(), java.id());
         july.renew(active1);
         july.borrow(r1.id(), clrs.id());
         july.borrow(r3.id(), dream.id());
         currentService.borrow(r4.id(), santi.id());
+        july.returnBook(overdue);
 
         Book scarce =
                 repository.books("ISBN", tongjian.isbn()).stream().findFirst().orElse(tongjian);
-        User[] fillers = {r0, r1};
+        // reader 已有未缴罚款，不能再借；用其他读者占满稀缺库存以触发预约
+        User[] fillers = {r1, r2};
         for (int i = 0; i < scarce.availableCopies() && i < fillers.length; i++)
             currentService.borrow(fillers[i].id(), scarce.id());
         currentService.reserve(r5.id(), scarce.id());
