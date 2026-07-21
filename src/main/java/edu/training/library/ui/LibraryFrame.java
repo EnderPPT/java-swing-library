@@ -563,6 +563,7 @@ public final class LibraryFrame extends JFrame {
     }
 
     private void refreshBooks() {
+        String selectedIsbn = selectedBookIsbn();
         bookRows = service.books((String) searchField.getSelectedItem(), keyword.getText());
         bookModel.setRowCount(0);
         for (Book b : bookRows)
@@ -577,6 +578,26 @@ public final class LibraryFrame extends JFrame {
                         b.availableCopies(),
                         b.location()
                     });
+        restoreBookSelection(selectedIsbn);
+    }
+
+    private String selectedBookIsbn() {
+        int i = Ui.selected(bookTable);
+        if (i < 0 || i >= bookRows.size()) return null;
+        return bookRows.get(i).isbn();
+    }
+
+    private void restoreBookSelection(String isbn) {
+        if (isbn == null || bookTable == null) return;
+        for (int modelRow = 0; modelRow < bookRows.size(); modelRow++) {
+            if (!isbn.equals(bookRows.get(modelRow).isbn())) continue;
+            int viewRow = bookTable.convertRowIndexToView(modelRow);
+            if (viewRow >= 0) {
+                bookTable.setRowSelectionInterval(viewRow, viewRow);
+                bookTable.scrollRectToVisible(bookTable.getCellRect(viewRow, 0, true));
+            }
+            return;
+        }
     }
 
     private void borrowSelected() {
