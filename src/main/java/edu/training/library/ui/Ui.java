@@ -1,6 +1,8 @@
 package edu.training.library.ui;
 
 import java.awt.*;
+import java.awt.event.ComponentAdapter;
+import java.awt.event.ComponentEvent;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
@@ -11,6 +13,7 @@ import javax.swing.border.EmptyBorder;
 import javax.swing.border.MatteBorder;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
+import javax.swing.table.TableColumn;
 
 public final class Ui {
     public static final Color BACKGROUND = new Color(255, 248, 240);
@@ -144,18 +147,42 @@ public final class Ui {
         return button;
     }
 
+    static JButton sidebarAction(String text) {
+        JButton button = secondary(text);
+        button.setFont(bodyFont(Font.PLAIN, 12f));
+        button.setHorizontalAlignment(SwingConstants.CENTER);
+        button.setPreferredSize(new Dimension(64, 32));
+        button.setMinimumSize(new Dimension(48, 32));
+        button.setMaximumSize(new Dimension(Integer.MAX_VALUE, 32));
+        button.setBorder(
+                BorderFactory.createCompoundBorder(
+                        BorderFactory.createLineBorder(OUTLINE_SOFT), new EmptyBorder(0, 4, 0, 4)));
+        return button;
+    }
+
+    static JButton sidebarDanger(String text) {
+        JButton button = sidebarAction(text);
+        button.setForeground(ERROR);
+        button.setBorder(
+                BorderFactory.createCompoundBorder(
+                        BorderFactory.createLineBorder(new Color(222, 159, 149)),
+                        new EmptyBorder(0, 4, 0, 4)));
+        return button;
+    }
+
     static JToggleButton navigation(String text, String glyph) {
         JToggleButton button = new JToggleButton(glyph + "   " + text);
-        button.setFont(bodyFont(Font.PLAIN, 15f));
+        button.setFont(bodyFont(Font.PLAIN, 14f));
         button.setForeground(INK);
         button.setHorizontalAlignment(SwingConstants.LEFT);
+        button.setAlignmentX(Component.LEFT_ALIGNMENT);
         button.setFocusPainted(false);
         button.setContentAreaFilled(true);
         button.setOpaque(true);
         button.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-        button.setPreferredSize(new Dimension(188, 48));
-        button.setMinimumSize(new Dimension(120, 48));
-        button.setMaximumSize(new Dimension(Integer.MAX_VALUE, 48));
+        button.setPreferredSize(new Dimension(160, 42));
+        button.setMinimumSize(new Dimension(96, 42));
+        button.setMaximumSize(new Dimension(Integer.MAX_VALUE, 42));
         button.addItemListener(event -> applyNavigationState(button));
         applyNavigationState(button);
         return button;
@@ -178,11 +205,11 @@ public final class Ui {
     private static void applyNavigationState(JToggleButton button) {
         boolean selected = button.isSelected();
         button.setBackground(selected ? PAPER_DARK : SIDEBAR);
-        button.setFont(bodyFont(selected ? Font.BOLD : Font.PLAIN, 15f));
+        button.setFont(bodyFont(selected ? Font.BOLD : Font.PLAIN, 14f));
         button.setBorder(
                 BorderFactory.createCompoundBorder(
                         new MatteBorder(0, selected ? 4 : 0, 0, 0, INK),
-                        new EmptyBorder(0, selected ? 14 : 18, 0, 10)));
+                        new EmptyBorder(0, selected ? 12 : 16, 0, 8)));
     }
 
     static DefaultTableModel model(String... columns) {
@@ -198,7 +225,7 @@ public final class Ui {
         JTable table = new JTable(model);
         table.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         table.setAutoCreateRowSorter(true);
-        table.setAutoResizeMode(JTable.AUTO_RESIZE_ALL_COLUMNS);
+        table.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
         table.setFillsViewportHeight(true);
         table.setRowHeight(44);
         table.setShowGrid(false);
@@ -212,11 +239,18 @@ public final class Ui {
         table.getTableHeader().setReorderingAllowed(false);
         table.getTableHeader().setPreferredSize(new Dimension(1, 42));
         table.getTableHeader().setDefaultRenderer(new CatalogHeaderRenderer());
-        for (int column = 0; column < model.getColumnCount(); column++) {
+
+        int columnCount = model.getColumnCount();
+        int[] baseWidths = new int[columnCount];
+        for (int column = 0; column < columnCount; column++) {
             String name = model.getColumnName(column);
-            table.getColumnModel().getColumn(column).setPreferredWidth(columnWidth(name));
+            int width = columnWidth(name);
+            baseWidths[column] = width;
+            TableColumn tableColumn = table.getColumnModel().getColumn(column);
+            tableColumn.setPreferredWidth(width);
+            tableColumn.setMinWidth(Math.min(72, width));
             if (name.contains("状态") || name.contains("提醒")) {
-                table.getColumnModel().getColumn(column).setCellRenderer(new StatusRenderer());
+                tableColumn.setCellRenderer(new StatusRenderer());
             }
         }
         holder[0] = table;
@@ -225,11 +259,59 @@ public final class Ui {
         scroll.setBorder(BorderFactory.createLineBorder(OUTLINE_SOFT));
         scroll.getViewport().setBackground(PAPER);
         scroll.getVerticalScrollBar().setUnitIncrement(18);
+        scroll.getHorizontalScrollBar().setUnitIncrement(18);
+        installAdaptiveColumnResize(table, scroll, baseWidths);
         return scroll;
+    }
+
+    /** 视口够宽时拉伸列，否则固定列宽并横向滚动。 */
+    private static void installAdaptiveColumnResize(
+            JTable table, JScrollPane scroll, int[] baseWidths) {
+        Runnable sync =
+                () -> {
+                    int viewportWidth = scroll.getViewport().getWidth();
+                    if (viewportWidth <= 0 || baseWidths.length == 0) return;
+                    int total = 0;
+                    for (int width : baseWidths) total += width;
+                    if (total <= 0) return;
+
+                    if (viewportWidth > total) {
+                        int assigned = 0;
+                        for (int i = 0; i < baseWidths.length; i++) {
+                            int width =
+                                    i == baseWidths.length - 1
+                                            ? Math.max(baseWidths[i], viewportWidth - assigned)
+                                            : Math.max(
+                                                    1,
+                                                    (int)
+                                                            Math.round(
+                                                                    (double) baseWidths[i]
+                                                                            * viewportWidth
+                                                                            / total));
+                            if (i < baseWidths.length - 1) assigned += width;
+                            table.getColumnModel().getColumn(i).setPreferredWidth(width);
+                        }
+                    } else {
+                        for (int i = 0; i < baseWidths.length; i++) {
+                            table.getColumnModel().getColumn(i).setPreferredWidth(baseWidths[i]);
+                        }
+                    }
+                    table.doLayout();
+                };
+        scroll.getViewport()
+                .addComponentListener(
+                        new ComponentAdapter() {
+                            @Override
+                            public void componentResized(ComponentEvent event) {
+                                sync.run();
+                            }
+                        });
+        SwingUtilities.invokeLater(sync);
     }
 
     private static int columnWidth(String name) {
         if (name.contains("时间") || name.contains("日期")) return 148;
+        if (name.contains("借阅记录")) return 220;
         if (name.contains("书名") || name.contains("原因")) return 170;
         if (name.contains("出版社")) return 150;
         if (name.contains("邮箱")) return 190;
@@ -274,6 +356,15 @@ public final class Ui {
         Dimension preferred = field.getPreferredSize();
         field.setPreferredSize(new Dimension(Math.max(120, preferred.width), 38));
         field.setMinimumSize(new Dimension(80, 38));
+        if (field instanceof JTextField textField && !textField.isEditable()) {
+            textField.setBackground(PAPER_DARK);
+            textField.setForeground(MUTED);
+            textField.setFocusable(false);
+            textField.setBorder(
+                    BorderFactory.createCompoundBorder(
+                            BorderFactory.createLineBorder(OUTLINE_SOFT),
+                            new EmptyBorder(0, 10, 0, 10)));
+        }
     }
 
     static int selected(JTable table) {
@@ -412,6 +503,8 @@ public final class Ui {
     }
 
     private static final class CatalogHeaderRenderer extends DefaultTableCellRenderer {
+        private SortOrder sortOrder = SortOrder.UNSORTED;
+
         private CatalogHeaderRenderer() {
             setOpaque(true);
             setBackground(PAPER_DARK);
@@ -429,14 +522,58 @@ public final class Ui {
                 boolean focused,
                 int row,
                 int column) {
+            sortOrder = sortOrderFor(table, column);
+            String text = value == null ? "" : value.toString();
             JLabel label =
                     (JLabel)
                             super.getTableCellRendererComponent(
-                                    table, value, selected, focused, row, column);
+                                    table, text, selected, focused, row, column);
+            label.setToolTipText(
+                    sortOrder == SortOrder.ASCENDING
+                            ? text + " · 升序"
+                            : sortOrder == SortOrder.DESCENDING
+                                    ? text + " · 降序"
+                                    : text + " · 点击排序");
+            int rightPad = sortOrder == SortOrder.UNSORTED ? 12 : 22;
             label.setBorder(
                     BorderFactory.createCompoundBorder(
-                            new MatteBorder(0, 0, 2, 0, INK), new EmptyBorder(0, 12, 0, 12)));
+                            new MatteBorder(0, 0, 2, 0, INK), new EmptyBorder(0, 12, 0, rightPad)));
             return label;
+        }
+
+        @Override
+        protected void paintComponent(Graphics graphics) {
+            super.paintComponent(graphics);
+            if (sortOrder == SortOrder.UNSORTED) return;
+            Graphics2D g = (Graphics2D) graphics.create();
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g.setColor(INK);
+            int cx = getWidth() - 12;
+            int cy = getHeight() / 2;
+            int half = 4;
+            if (sortOrder == SortOrder.ASCENDING) {
+                g.fillPolygon(
+                        new int[] {cx - half, cx + half, cx},
+                        new int[] {cy + half - 1, cy + half - 1, cy - half},
+                        3);
+            } else {
+                g.fillPolygon(
+                        new int[] {cx - half, cx + half, cx},
+                        new int[] {cy - half + 1, cy - half + 1, cy + half},
+                        3);
+            }
+            g.dispose();
+        }
+
+        private static SortOrder sortOrderFor(JTable table, int viewColumn) {
+            RowSorter<?> sorter = table.getRowSorter();
+            if (sorter == null) return SortOrder.UNSORTED;
+            List<? extends RowSorter.SortKey> keys = sorter.getSortKeys();
+            if (keys == null || keys.isEmpty()) return SortOrder.UNSORTED;
+            RowSorter.SortKey key = keys.getFirst();
+            int modelColumn = table.convertColumnIndexToModel(viewColumn);
+            if (key.getColumn() != modelColumn) return SortOrder.UNSORTED;
+            return key.getSortOrder();
         }
     }
 }
