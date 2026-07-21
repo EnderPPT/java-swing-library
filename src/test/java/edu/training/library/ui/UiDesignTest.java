@@ -38,7 +38,7 @@ class UiDesignTest {
         assertEquals(44, holder[0].getRowHeight());
         assertFalse(holder[0].getShowHorizontalLines());
         assertEquals(Ui.PAPER, holder[0].getBackground());
-        assertEquals(JTable.AUTO_RESIZE_OFF, holder[0].getAutoResizeMode());
+        assertEquals(JTable.AUTO_RESIZE_ALL_COLUMNS, holder[0].getAutoResizeMode());
         assertTrue(holder[0].getColumnModel().getColumn(0).getPreferredWidth() >= 90);
     }
 
