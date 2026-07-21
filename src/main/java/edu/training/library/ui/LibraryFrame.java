@@ -378,7 +378,7 @@ public final class LibraryFrame extends JFrame {
         actions.add(commands);
         top.add(actions, BorderLayout.EAST);
         p.add(top, BorderLayout.NORTH);
-        bookModel = Ui.model("ID", "ISBN", "书名", "作者", "出版社", "分类", "馆藏", "可借", "位置");
+        bookModel = Ui.model("ISBN", "书名", "作者", "出版社", "分类", "馆藏", "可借", "位置");
         JTable[] h = new JTable[1];
         p.add(Ui.table(bookModel, h), BorderLayout.CENTER);
         bookTable = h[0];
@@ -472,7 +472,6 @@ public final class LibraryFrame extends JFrame {
         for (Book b : bookRows)
             bookModel.addRow(
                     new Object[] {
-                        b.id(),
                         b.isbn(),
                         b.title(),
                         b.author(),
@@ -921,7 +920,6 @@ public final class LibraryFrame extends JFrame {
         categoryModel = Ui.model("分类", "品种", "馆藏总量", "可借数量", "在借数量");
         JTable[] categoryHolder = new JTable[1];
         JScrollPane categoryTable = Ui.table(categoryModel, categoryHolder);
-        categoryHolder[0].setAutoResizeMode(JTable.AUTO_RESIZE_ALL_COLUMNS);
 
         JPanel content = new JPanel(new GridLayout(2, 2, 14, 14));
         content.setOpaque(false);
