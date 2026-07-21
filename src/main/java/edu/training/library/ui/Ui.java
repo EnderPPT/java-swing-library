@@ -3,7 +3,9 @@ package edu.training.library.ui;
 import java.awt.*;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
+import java.math.BigDecimal;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -14,6 +16,8 @@ import javax.swing.border.MatteBorder;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.table.TableColumn;
+import javax.swing.table.TableModel;
+import javax.swing.table.TableRowSorter;
 
 public final class Ui {
     public static final Color BACKGROUND = new Color(255, 248, 240);
@@ -239,6 +243,7 @@ public final class Ui {
         table.getTableHeader().setReorderingAllowed(false);
         table.getTableHeader().setPreferredSize(new Dimension(1, 42));
         table.getTableHeader().setDefaultRenderer(new CatalogHeaderRenderer());
+        installNumericSort(table);
 
         int columnCount = model.getColumnCount();
         int[] baseWidths = new int[columnCount];
@@ -262,6 +267,48 @@ public final class Ui {
         scroll.getHorizontalScrollBar().setUnitIncrement(18);
         installAdaptiveColumnResize(table, scroll, baseWidths);
         return scroll;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void installNumericSort(JTable table) {
+        if (!(table.getRowSorter() instanceof TableRowSorter<?> raw)) return;
+        TableRowSorter<TableModel> sorter = (TableRowSorter<TableModel>) raw;
+        Comparator<Object> numeric = Comparator.comparing(Ui::toSortNumber);
+        for (int column = 0; column < table.getColumnCount(); column++) {
+            if (isNumericColumn(table.getColumnName(column))) {
+                sorter.setComparator(column, numeric);
+            }
+        }
+    }
+
+    private static boolean isNumericColumn(String name) {
+        if (name == null || name.isBlank()) return false;
+        return name.equals("ID")
+                || name.contains("号")
+                || name.contains("馆藏")
+                || name.contains("可借")
+                || name.contains("在借")
+                || name.contains("续借")
+                || name.contains("排名")
+                || name.contains("次数")
+                || name.contains("品种")
+                || name.contains("数量")
+                || name.contains("金额");
+    }
+
+    private static BigDecimal toSortNumber(Object value) {
+        if (value == null) return BigDecimal.valueOf(Long.MIN_VALUE);
+        if (value instanceof BigDecimal decimal) return decimal;
+        if (value instanceof Number number) return BigDecimal.valueOf(number.doubleValue());
+        String text = value.toString().trim().replace("¥", "").replace(",", "").replace(" ", "");
+        if (text.isEmpty() || "-".equals(text) || "—".equals(text)) {
+            return BigDecimal.valueOf(Long.MIN_VALUE);
+        }
+        try {
+            return new BigDecimal(text);
+        } catch (NumberFormatException ignored) {
+            return BigDecimal.valueOf(Long.MIN_VALUE);
+        }
     }
 
     /** 视口够宽时拉伸列，否则固定列宽并横向滚动。 */

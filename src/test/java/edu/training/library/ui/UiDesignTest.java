@@ -44,6 +44,27 @@ class UiDesignTest {
     }
 
     @Test
+    void numericColumnsSortByValueNotLexicographically() {
+        var model = Ui.model("书名", "可借");
+        model.addRow(new Object[] {"A", 10});
+        model.addRow(new Object[] {"B", 2});
+        model.addRow(new Object[] {"C", 5});
+        JTable[] holder = new JTable[1];
+        Ui.table(model, holder);
+        JTable table = holder[0];
+
+        table.getRowSorter()
+                .setSortKeys(
+                        List.of(
+                                new javax.swing.RowSorter.SortKey(
+                                        1, javax.swing.SortOrder.ASCENDING)));
+
+        assertEquals(2, table.getValueAt(0, 1));
+        assertEquals(5, table.getValueAt(1, 1));
+        assertEquals(10, table.getValueAt(2, 1));
+    }
+
+    @Test
     void navigationButtonReflectsSelectedState() {
         JToggleButton button = Ui.navigation("总览", "▦");
 
